@@ -255,6 +255,21 @@ class CelerySettings(BaseSettings):
         extra='allow'
     )
 
+class ReportingSettings(BaseSettings):
+    """إعدادات التقارير"""
+    template_dir: str = "templates/reports"
+    output_dir: str = "reports"
+    default_format: str = "pdf"
+    max_plots: int = 10
+    dpi: int = 300
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra='allow'
+    )
+
 class Settings(BaseSettings):
     """الإعدادات الرئيسية"""
     app: AppSettings = Field(default_factory=AppSettings)
@@ -267,12 +282,14 @@ class Settings(BaseSettings):
     storage: StorageSettings = Field(default_factory=StorageSettings)
     alerts: AlertSettings = Field(default_factory=AlertSettings)
     celery: CelerySettings = Field(default_factory=CelerySettings)
+    reporting: ReportingSettings = Field(default_factory=ReportingSettings)
     
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra='allow'
+        extra='allow',
+        protected_namespaces=()
     )
     
     @classmethod

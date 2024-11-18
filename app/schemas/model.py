@@ -1,14 +1,9 @@
-from pydantic import BaseModel, Field, field_validator
-from typing import Dict, Any, List, Optional, Union
-from datetime import datetime
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+from typing import List, Dict, Any, Optional, Union
 from enum import Enum
+from datetime import datetime
+import numpy as np
 
-class TaskType(str, Enum):
-    """أنواع المهام المدعومة"""
-    CLASSIFICATION = "classification"
-    REGRESSION = "regression"
-    CLUSTERING = "clustering"
-    DIMENSIONALITY_REDUCTION = "dimensionality_reduction"
 
 class ModelStatus(str, Enum):
     """حالات النموذج"""
@@ -18,135 +13,95 @@ class ModelStatus(str, Enum):
     FAILED = "failed"
     DEPRECATED = "deprecated"
 
-class PredictionRequest(BaseModel):
+
+class BaseModelConfig(BaseModel):
+    """النموذج الأساسي مع الإعدادات"""
+    model_config = ConfigDict(protected_namespaces=())
+
+
+class PredictionRequest(BaseModelConfig):
     """نموذج طلب التنبؤ"""
-    data: Union[Dict[str, Any], List[Dict[str, Any]]] = Field(
-        ...,
-        description="البيانات المراد التنبؤ بها"
-    )
-    return_probabilities: bool = Field(
-        False,
-        description="إرجاع احتمالات التنبؤ"
-    )
-    batch_size: Optional[int] = Field(
-        None,
-        description="حجم الدفعة للتنبؤات المتعددة",
-        gt=0
-    )
+    data: Union[List[List[float]], List[Dict[str, Any]]]
+    return_probabilities: bool = False
 
     @field_validator('data')
-    def validate_data(cls, v: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """التحقق من صحة البيانات"""
-        if isinstance(v, dict):
-            if not v:
-                raise ValueError("البيانات لا يمكن أن تكون فارغة")
-        elif isinstance(v, list):
-            if not v:
-                raise ValueError("قائمة البيانات لا يمكن أن تكون فارغة")
-            if not all(isinstance(item, dict) for item in v):
-                raise ValueError("جميع العناصر يجب أن تكون قواميس")
-        else:
-            raise ValueError("البيانات يجب أن تكون قاموس أو قائمة قواميس")
+    def validate_data(cls, v):
+        if not v:
+            raise ValueError("البيانات لا يمكن أن تكون فارغة")
         return v
 
-class PredictionResponse(BaseModel):
+
+class PredictionResponse(BaseModelConfig):
     """نموذج استجابة التنبؤ"""
-    model_id: str = Field(..., description="معرف النموذج")
-    predictions: List[Dict[str, Any]] = Field(..., description="نتائج التنبؤ")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="البيانات الوصفية للتنبؤ")
-    execution_time: Optional[float] = Field(None, description="وقت التنفيذ بالثواني")
+    model_id: str
+    predictions: List[Any]
+    prediction_time: Optional[float] = None
+    metadata: Dict[str, Any]
 
-    model_config = {
-        'json_schema_extra': {
-            'examples': [
-                {
-                    'model_id': 'model_123',
-                    'predictions': [{'class': 1, 'probability': 0.95}],
-                    'metadata': {'version': '1.0.0'},
-                    'execution_time': 0.15
-                }
-            ]
-        }
-    }
 
-class ModelInfo(BaseModel):
-    """نموذج معلومات النموذج"""
-    model_id: str = Field(..., description="معرف النموذج")
-    task_type: TaskType = Field(..., description="نوع المهمة")
-    target_column: str = Field(..., description="عمود الهدف")
-    status: ModelStatus = Field(default=ModelStatus.ACTIVE, description="حالة النموذج")
-    creation_date: datetime = Field(..., description="تاريخ الإنشاء")
-    last_updated: Optional[datetime] = Field(None, description="آخر تحديث")
-    version: Optional[str] = Field(None, description="إصدار النموذج")
-    description: Optional[str] = Field(None, description="وصف النموذج")
-    evaluation_results: Dict[str, Any] = Field(..., description="نتائج التقييم")
-    feature_importance: Optional[Dict[str, float]] = Field(None, description="أهمية الميزات")
-    preprocessing_info: Optional[Dict[str, Any]] = Field(None, description="معلومات المعالجة المسبقة")
-
-    model_config = {
-        'json_encoders': {
-            datetime: lambda v: v.isoformat()
-        }
-    }
-
-class TrainingRequest(BaseModel):
+class TrainingRequest(BaseModelConfig):
     """نموذج طلب التدريب"""
-    task_type: TaskType = Field(..., description="نوع المهمة")
-    target_column: str = Field(..., description="عمود الهدف")
-    model_id: Optional[str] = Field(None, description="معرف النموذج (اختياري)")
-    training_params: Optional[Dict[str, Any]] = Field(None, description="معلمات التدريب")
-    validation_split: Optional[float] = Field(
-        0.2,
-        description="نسبة بيانات التحقق",
-        ge=0.0,
-        le=1.0
-    )
-    stratify: Optional[bool] = Field(True, description="استخدام التقسيم الطبقي")
+    model_id: Optional[str] = None
+    task_type: str
+    target_column: str
+    feature_names: List[str]
+    training_params: Optional[Dict[str, Any]] = None
 
-class TrainingResponse(BaseModel):
+
+class TrainingResponse(BaseModelConfig):
     """نموذج استجابة التدريب"""
     model_id: str
     task_type: str
     target_column: str
     feature_names: List[str]
-    parameters: Dict[str, Any] = Field(default_factory=dict)
+    parameters: Dict[str, Any]
     evaluation_results: Dict[str, Any]
-    training_time: float = Field(default=0.0)
+    training_time: float
 
-class EvaluationRequest(BaseModel):
+
+class ModelInfo(BaseModelConfig):
+    """نموذج معلومات النموذج"""
+    model_id: str
+    task_type: str
+    target_column: str
+    feature_names: List[str]
+    creation_date: datetime
+    last_updated: Optional[datetime]
+    status: ModelStatus
+    version: Optional[str]
+    metadata: Dict[str, Any]
+
+
+class EvaluationRequest(BaseModelConfig):
     """نموذج طلب التقييم"""
-    model_id: str = Field(..., description="معرف النموذج")
-    target_column: Optional[str] = Field(None, description="عمود الهدف")
-    metrics: Optional[List[str]] = Field(None, description="المقاييس المطلوبة")
+    data: Union[List[List[float]], List[Dict[str, Any]]]
+    actual_values: List[Any]
+    metrics: Optional[List[str]] = None
 
-class EvaluationResponse(BaseModel):
+
+class EvaluationResponse(BaseModelConfig):
     """نموذج استجابة التقييم"""
-    model_id: str = Field(..., description="معرف النموذج")
-    evaluation_results: Dict[str, Any] = Field(..., description="نتائج التقييم")
-    evaluation_time: float = Field(..., description="وقت التقييم بالثواني")
+    model_id: str
+    evaluation_results: Dict[str, Any]
+    evaluation_time: float
 
-class MonitoringMetrics(BaseModel):
-    """نموذج مقاييس المراقبة"""
-    model_id: str = Field(..., description="معرف النموذج")
-    timestamp: datetime = Field(..., description="وقت القياس")
-    performance_metrics: Dict[str, float] = Field(..., description="مقاييس الأداء")
-    drift_metrics: Optional[Dict[str, Any]] = Field(None, description="مقاييس الانحراف")
-    resource_usage: Optional[Dict[str, float]] = Field(None, description="استخدام الموارد")
 
-class ModelUpdate(BaseModel):
+class ModelUpdate(BaseModelConfig):
     """نموذج تحديث النموذج"""
-    model_id: str = Field(..., description="معرف النموذج")
-    update_type: str = Field(..., description="نوع التحديث")
-    performance_before: Dict[str, float] = Field(..., description="الأداء قبل التحديث")
-    performance_after: Dict[str, float] = Field(..., description="الأداء بعد التحديث")
-    update_time: datetime = Field(..., description="وقت التحديث")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="بيانات وصفية إضافية")
+    model_id: str
+    update_type: str
+    performance_before: Dict[str, float]
+    performance_after: Dict[str, float]
+    update_time: datetime
+    success: bool
+    error_message: Optional[str] = None
 
-    @field_validator('update_type')
-    def validate_update_type(cls, v: str) -> str:
-        """التحقق من نوع التحديث"""
-        allowed_types = {'retrain', 'tune', 'fix'}
-        if v not in allowed_types:
-            raise ValueError(f"نوع التحديث يجب أن يكون أحد القيم التالية: {allowed_types}")
-        return v
-  
+
+class MonitoringMetrics(BaseModelConfig):
+    """نموذج مقاييس المراقبة"""
+    model_id: str
+    timestamp: datetime
+    metrics: Dict[str, Any]
+    drift_detected: bool
+    performance_metrics: Dict[str, float]
+    resource_usage: Dict[str, float]
