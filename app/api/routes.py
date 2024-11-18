@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import io
 import aiofiles
 import psutil
+import os
 
 from app.core.config import settings
 from app.ml.data_processing import data_processor
@@ -86,7 +87,6 @@ def convert_numpy_types(obj: Any) -> Any:
 
 @router.post("/models/{model_id}/predict", response_model=PredictionResponse)
 @with_logging_context({'operation': 'predict'})
-@REQUEST_LATENCY.time()
 async def predict(
     model_id: str,
     request: PredictionRequest,
@@ -95,15 +95,12 @@ async def predict(
     """إجراء تنبؤات باستخدام النموذج"""
     try:
         # تحميل النموذج
-        model, metadata = await model_manager.load_model(model_id)
+        model = await model_manager.load_model(model_id)
         if not model:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"النموذج {model_id} غير موجود"
             )
-
-        # قياس وقت التنبؤ
-        prediction_start = datetime.now()
 
         # إجراء التنبؤات
         predictions = await prediction_service.predict(
@@ -112,22 +109,13 @@ async def predict(
             return_probabilities=request.return_probabilities
         )
 
-        # حساب وقت التنبؤ
-        prediction_time = (datetime.now() - prediction_start).total_seconds()
-        PREDICTION_LATENCY.observe(prediction_time)
-
-        # تحديث العداد
-        MODEL_PREDICTIONS.labels(model_id=model_id).inc()
+        # تحويل التنبؤات إلى JSON
+        predictions = convert_numpy_types(predictions)
 
         return PredictionResponse(
             model_id=model_id,
             predictions=predictions,
-            prediction_time=prediction_time,
-            metadata={
-                'version': metadata.get('version', 'unknown'),
-                'last_updated': metadata.get('last_updated'),
-                'model_type': metadata.get('model_type')
-            }
+            metadata={'timestamp': datetime.now().isoformat()}
         )
 
     except Exception as e:
@@ -138,18 +126,13 @@ async def predict(
         )
 
 @router.get("/models/{model_id}/info", response_model=ModelInfo)
-@cache_decorator(ttl=300)  # تخزين مؤقت لمدة 5 دقائق
+@cache_decorator(ttl=300)
 async def get_model_info(
     model_id: str,
     session: AsyncSession = Depends(get_db)
 ) -> ModelInfo:
     """الحصول على معلومات النموذج"""
     try:
-        # محاولة استرجاع المعلومات من الذاكرة المؤقتة أولاً
-        cached_info = await cache_manager.get(f"model_info:{model_id}")
-        if cached_info:
-            return ModelInfo(**cached_info)
-
         # استرجاع المعلومات من قاعدة البيانات
         model_info = await model_manager.get_model_info(model_id)
         if not model_info:
@@ -161,16 +144,34 @@ async def get_model_info(
         # تحويل البيانات إلى أنواع قابلة للتحويل إلى JSON
         model_info = convert_numpy_types(model_info)
 
-        # تخزين المعلومات في الذاكرة المؤقتة
-        await cache_manager.set(f"model_info:{model_id}", model_info, ttl=300)
+        # التأكد من وجود جميع الحقول المطلوبة
+        required_fields = {
+            'model_id': model_id,
+            'task_type': model_info.get('task_type', 'unknown'),
+            'target_column': model_info.get('target_column', ''),
+            'feature_names': model_info.get('feature_names', []),
+            'creation_date': model_info.get('creation_date', datetime.now().isoformat()),
+            'last_updated': model_info.get('last_updated', datetime.now().isoformat()),
+            'status': model_info.get('status', 'active'),
+            'version': model_info.get('version', '1.0.0'),
+            'metadata': {
+                'framework_version': settings.app.version,
+                'file_name': model_info.get('file_name', ''),
+                'training_time': model_info.get('training_time', 0.0),
+                'evaluation_results': model_info.get('evaluation_results', {}),
+                'training_params': model_info.get('training_params', {})
+            }
+        }
+
+        # تحديث model_info بالحقول المطلوبة
+        model_info.update(required_fields)
 
         # تسجيل نجاح العملية
         logger.info(f"تم استرجاع معلومات النموذج {model_id} بنجاح")
 
+        # إنشاء نموذج ModelInfo
         return ModelInfo(**model_info)
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"خطأ في الحصول على معلومات النموذج {model_id}: {str(e)}")
         raise HTTPException(
@@ -227,14 +228,26 @@ async def get_monitoring_metrics(
     model_id: str,
     session: AsyncSession = Depends(get_db)
 ) -> MonitoringMetrics:
-    """لحصو على مقاييس مراقبة النموذج"""
+    """الحصول على مقاييس مراقبة النموذج"""
     try:
-        metrics = await model_monitor.get_metrics(model_id)
-        if not metrics:
+        # التحقق من وجود النموذج
+        if not await model_manager.model_exists(model_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"لا توجد مقاييس متاحة للنموذج {model_id}"
+                detail=f"النموذج {model_id} غير موجود"
             )
+
+        metrics = await model_monitor.get_metrics(model_id)
+        if not metrics:
+            return MonitoringMetrics(
+                model_id=model_id,
+                timestamp=datetime.now(),
+                metrics={},
+                drift_detected=False,
+                performance_metrics={},
+                resource_usage={}
+            )
+
         return metrics
 
     except Exception as e:
@@ -272,7 +285,7 @@ async def generate_model_report_endpoint(
 ) -> StreamingResponse:
     """توليد تقرير النموذج"""
     try:
-        # الحصول على معلومات النموذج
+        # التحقق من وجود النموذج
         model_info = await model_manager.get_model_info(model_id)
         if not model_info:
             raise HTTPException(
@@ -280,15 +293,21 @@ async def generate_model_report_endpoint(
                 detail=f"النموذج {model_id} غير موجود"
             )
 
+        # تحويل البيانات إلى JSON
+        model_info = convert_numpy_types(model_info)
+
         # توليد التقرير
         report_path = await report_generator.generate_report(
             model_id=model_id,
-            model_info=model_info,
-            evaluation_results=model_info.get('evaluation_results', {}),
-            feature_importance=model_info.get('feature_importance', {})
+            model_info=model_info
         )
 
-        # إرجاع التقرير كملف للتحميل
+        if not report_path or not os.path.exists(report_path):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="فشل في توليد التقرير"
+            )
+
         return StreamingResponse(
             open(report_path, 'rb'),
             media_type='application/pdf',
@@ -314,19 +333,50 @@ async def list_models(
 ) -> List[ModelInfo]:
     """الحصول على قائمة النماذج مع خيارات التصفية والترتيب"""
     try:
+        # الحصول على قائمة النماذج
         models = await model_manager.list_models()
+        
+        # تحويل كل نموذج إلى ModelInfo
+        model_list = []
+        for model in models:
+            try:
+                # تحويل البيانات إلى أنواع قابلة للتحويل إلى JSON
+                model_data = convert_numpy_types(model)
+                
+                # إضافة الحقول المطلوبة
+                model_data.update({
+                    'model_id': model_data.get('model_id', ''),
+                    'task_type': model_data.get('task_type', 'unknown'),
+                    'target_column': model_data.get('target_column', ''),
+                    'feature_names': model_data.get('feature_names', []),
+                    'creation_date': model_data.get('creation_date', datetime.now().isoformat()),
+                    'last_updated': model_data.get('last_updated', datetime.now().isoformat()),
+                    'status': model_data.get('status', 'active'),
+                    'version': model_data.get('version', '1.0.0'),
+                    'metadata': {
+                        'framework_version': settings.app.version,
+                        'file_name': model_data.get('file_name', ''),
+                        'training_time': model_data.get('training_time', 0.0)
+                    }
+                })
+                
+                model_info = ModelInfo(**model_data)
+                model_list.append(model_info)
+            except Exception as e:
+                logger.error(f"خطأ في تحويل معلومات النموذج: {str(e)}")
+                continue
         
         # تطبيق التصفية
         if status:
-            models = [m for m in models if m.status == status]
+            model_list = [m for m in model_list if m.status == status]
         if task_type:
-            models = [m for m in models if m.task_type == task_type]
+            model_list = [m for m in model_list if m.task_type == task_type]
             
         # تطبيق الترتيب
         reverse = order.lower() == 'desc'
-        models.sort(key=lambda x: getattr(x, sort_by), reverse=reverse)
+        model_list.sort(key=lambda x: getattr(x, sort_by), reverse=reverse)
         
-        return models
+        return model_list
 
     except Exception as e:
         logger.error(f"خطأ في الحصول على قائمة النماذج: {str(e)}")
