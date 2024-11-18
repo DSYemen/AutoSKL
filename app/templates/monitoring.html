@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white shadow-lg rounded-lg overflow-hidden">
+    <!-- رأس الصفحة -->
+    <div class="p-6 bg-gradient-to-r from-purple-500 to-pink-600">
+        <div class="flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-white">مراقبة النماذج</h1>
+            <div class="flex gap-4">
+                <button onclick="refreshMetrics()"
+                        class="bg-white text-purple-600 px-4 py-2 rounded-lg hover:bg-purple-50 transition-colors">
+                    <i class="fas fa-sync-alt mr-2"></i>
+                    تحديث
+                </button>
+                <button onclick="showSettingsModal()"
+                        class="bg-white text-purple-600 px-4 py-2 rounded-lg hover:bg-purple-50 transition-colors">
+                    <i class="fas fa-cog mr-2"></i>
+                    الإعدادات
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- لوحة المؤشرات -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-6">
+        <div class="bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg p-4">
+            <div class="text-2xl font-bold text-purple-800">{{ stats.active_models }}</div>
+            <div class="text-sm text-purple-600">النماذج النشطة</div>
+        </div>
+        <div class="bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg p-4">
+            <div class="text-2xl font-bold text-blue-800">{{ stats.total_predictions }}</div>
+            <div class="text-sm text-blue-600">إجمالي التنبؤات</div>
+        </div>
+        <div class="bg-gradient-to-br from-green-100 to-teal-100 rounded-lg p-4">
+            <div class="text-2xl font-bold text-green-800">{{ stats.avg_performance }}%</div>
+            <div class="text-sm text-green-600">متوسط الأداء</div>
+        </div>
+        <div class="bg-gradient-to-br from-yellow-100 to-orange-100 rounded-lg p-4">
+            <div class="text-2xl font-bold text-yellow-800">{{ stats.drift_alerts }}</div>
+            <div class="text-sm text-yellow-600">تنبيهات الانحراف</div>
+        </div>
+    </div>
+
+    <!-- قائمة النماذج -->
+    <div class="p-6 border-t">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold">حالة النماذج</h2>
+            <div class="flex gap-2">
+                <select id="status-filter" 
+                        class="rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500">
+                    <option value="">جميع الحالات</option>
+                    <option value="healthy">صحي</option>
+                    <option value="warning">تحذير</option>
+                    <option value="critical">حرج</option>
+                </select>
+                <input type="text" id="search" placeholder="بحث..." 
+                       class="rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for model in models %}
+            <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200 model-card"
+                 data-status="{{ model.health_status }}">
+                <div class="p-4">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">{{ model.model_id }}</h3>
+                            <p class="text-sm text-gray-500">{{ model.task_type }}</p>
+                        </div>
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full 
+                                   {% if model.health_status == 'healthy' %}bg-green-100 text-green-800
+                                   {% elif model.health_status == 'warning' %}bg-yellow-100 text-yellow-800
+                                   {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ model.health_status }}
+                        </span>
+                    </div>
+
+                    <!-- مؤشرات الأداء -->
+                    <div class="space-y-3">
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-gray-600">الأداء</span>
+                                <span class="font-medium">{{ "%.1f"|format(model.performance * 100) }}%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div class="bg-purple-600 h-2 rounded-full" 
+                                     style="width: {{ model.performance * 100 }}%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-gray-600">استقرار البيانات</span>
+                                <span class="font-medium">{{ "%.1f"|format(model.data_stability * 100) }}%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div class="bg-blue-600 h-2 rounded-full" 
+                                     style="width: {{ model.data_stability * 100 }}%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-gray-600">استخدام الموارد</span>
+                                <span class="font-medium">{{ "%.1f"|format(model.resource_usage * 100) }}%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div class="bg-green-600 h-2 rounded-full" 
+                                     style="width: {{ model.resource_usage * 100 }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- الإجراءات -->
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <div class="flex justify-between gap-2">
+                            <button onclick="showModelDetails('{{ model.model_id }}')"
+                                    class="flex-1 px-3 py-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors">
+                                <i class="fas fa-chart-line mr-1"></i> التفاصيل
+                            </button>
+                            <button onclick="showDriftAnalysis('{{ model.model_id }}')"
+                                    class="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors">
+                                <i class="fas fa-wave-square mr-1"></i> الانحراف
+                            </button>
+                            <button onclick="showAlertSettings('{{ model.model_id }}')"
+                                    class="px-3 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+                                <i class="fas fa-bell"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- نافذة التفاصيل -->
+<div id="details-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50">
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">تفاصيل النموذج</h3>
+                    <button onclick="closeDetailsModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div id="model-details" class="space-y-4">
+                    <!-- سيتم ملء التفاصيل ديناميكياً -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نافذة تحليل الانحراف -->
+<div id="drift-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50">
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">تحليل انحراف البيانات</h3>
+                    <button onclick="closeDriftModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div id="drift-analysis" class="space-y-4">
+                    <!-- سيتم ملء التحليل ديناميكياً -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نافذة إعدادات التنبيهات -->
+<div id="alerts-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50">
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">إعدادات التنبيهات</h3>
+                    <button onclick="closeAlertsModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form id="alerts-form" class="space-y-4">
+                    <input type="hidden" id="alert-model-id">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">عتبة الأداء</label>
+                        <input type="number" id="performance-threshold" min="0" max="1" step="0.01"
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">عتبة الانحراف</label>
+                        <input type="number" id="drift-threshold" min="0" max="1" step="0.01"
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500">
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="email-alerts"
+                               class="rounded border-gray-300 text-purple-600 shadow-sm focus:border-purple-500 focus:ring-purple-500">
+                        <label for="email-alerts" class="mr-2 text-sm text-gray-700">
+                            تنبيهات البريد الإلكتروني
+                        </label>
+                    </div>
+                    <div class="flex justify-end gap-4 mt-6">
+                        <button type="button" onclick="closeAlertsModal()"
+                                class="px-4 py-2 text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                            إلغاء
+                        </button>
+                        <button type="submit"
+                                class="px-4 py-2 text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors">
+                            حفظ
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // تحديث المؤشرات
+    async function refreshMetrics() {
+        try {
+            const response = await fetch('/api/v1/monitoring/metrics');
+            if (response.ok) {
+                const data = await response.json();
+                // تحديث المؤشرات في الواجهة
+                location.reload();
+            } else {
+                showToast('فشل تحديث المؤشرات', 'error');
+            }
+        } catch (error) {
+            showToast('حدث خطأ أثناء تحديث المؤشرات', 'error');
+        }
+    }
+    
+    // عرض تفاصيل النموذج
+    async function showModelDetails(modelId) {
+        try {
+            const response = await fetch(`/api/v1/monitoring/${modelId}/details`);
+            if (response.ok) {
+                const details = await response.json();
+                document.getElementById('model-details').innerHTML = formatModelDetails(details);
+                document.getElementById('details-modal').classList.remove('hidden');
+            } else {
+                showToast('فشل جلب تفاصيل النموذج', 'error');
+            }
+        } catch (error) {
+            showToast('حدث خطأ أثناء جلب التفاصيل', 'error');
+        }
+    }
+    
+    // عرض تحليل الانحراف
+    async function showDriftAnalysis(modelId) {
+        try {
+            const response = await fetch(`/api/v1/monitoring/${modelId}/drift`);
+            if (response.ok) {
+                const analysis = await response.json();
+                document.getElementById('drift-analysis').innerHTML = formatDriftAnalysis(analysis);
+                document.getElementById('drift-modal').classList.remove('hidden');
+            } else {
+                showToast('فشل جلب تحليل الانحراف', 'error');
+            }
+        } catch (error) {
+            showToast('حدث خطأ أثناء جلب تحليل الانحراف', 'error');
+        }
+    }
+    
+    // عرض إعدادات التنبيهات
+    function showAlertSettings(modelId) {
+        document.getElementById('alert-model-id').value = modelId;
+        document.getElementById('alerts-modal').classList.remove('hidden');
+    }
+    
+    // إغلاق النوافذ
+    function closeDetailsModal() {
+        document.getElementById('details-modal').classList.add('hidden');
+    }
+    
+    function closeDriftModal() {
+        document.getElementById('drift-modal').classList.add('hidden');
+    }
+    
+    function closeAlertsModal() {
+        document.getElementById('alerts-modal').classList.add('hidden');
+        document.getElementById('alerts-form').reset();
+    }
+    
+    // تنسيق تفاصيل النموذج
+    function formatModelDetails(details) {
+        return `
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <h4 class="font-medium text-gray-900">إحصائيات الأداء</h4>
+                    <pre class="mt-1 text-sm text-gray-500 bg-gray-50 p-2 rounded-lg overflow-auto">
+                        ${JSON.stringify(details.performance_stats, null, 2)}
+                    </pre>
+                </div>
+                <div>
+                    <h4 class="font-medium text-gray-900">استخدام الموارد</h4>
+                    <pre class="mt-1 text-sm text-gray-500 bg-gray-50 p-2 rounded-lg overflow-auto">
+                        ${JSON.stringify(details.resource_usage, null, 2)}
+                    </pre>
+                </div>
+            </div>
+        `;
+    }
+    
+    // تنسيق تحليل الانحراف
+    function formatDriftAnalysis(analysis) {
+        return `
+            <div class="space-y-4">
+                <div>
+                    <h4 class="font-medium text-gray-900">ملخص الانحراف</h4>
+                    <pre class="mt-1 text-sm text-gray-500 bg-gray-50 p-2 rounded-lg overflow-auto">
+                        ${JSON.stringify(analysis.summary, null, 2)}
+                    </pre>
+                </div>
+                <div>
+                    <h4 class="font-medium text-gray-900">تفاصيل الميزات</h4>
+                    <pre class="mt-1 text-sm text-gray-500 bg-gray-50 p-2 rounded-lg overflow-auto">
+                        ${JSON.stringify(analysis.feature_details, null, 2)}
+                    </pre>
+                </div>
+            </div>
+        `;
+    }
+    
+    // معالجة نموذج التنبيهات
+    document.getElementById('alerts-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const modelId = document.getElementById('alert-model-id').value;
+        const settings = {
+            performance_threshold: parseFloat(document.getElementById('performance-threshold').value),
+            drift_threshold: parseFloat(document.getElementById('drift-threshold').value),
+            email_alerts: document.getElementById('email-alerts').checked
+        };
+        
+        try {
+            const response = await fetch(`/api/v1/monitoring/${modelId}/alerts/settings`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings)
+            });
+            
+            if (response.ok) {
+                showToast('تم حفظ إعدادات التنبيهات بنجاح', 'success');
+                closeAlertsModal();
+            } else {
+                const error = await response.json();
+                showToast(error.message, 'error');
+            }
+        } catch (error) {
+            showToast('حدث خطأ أثناء حفظ الإعدادات', 'error');
+        }
+    });
+    
+    // تحديث الفلاتر
+    document.getElementById('status-filter').addEventListener('change', updateFilters);
+    document.getElementById('search').addEventListener('input', updateFilters);
+    
+    function updateFilters() {
+        const status = document.getElementById('status-filter').value;
+        const search = document.getElementById('search').value.toLowerCase();
+        
+        document.querySelectorAll('.model-card').forEach(card => {
+            const cardStatus = card.dataset.status;
+            const modelId = card.querySelector('h3').textContent.toLowerCase();
+            
+            const matchesStatus = !status || cardStatus === status;
+            const matchesSearch = !search || modelId.includes(search);
+            
+            card.style.display = matchesStatus && matchesSearch ? 'block' : 'none';
+        });
+    }
+</script>
+{% endblock %} 

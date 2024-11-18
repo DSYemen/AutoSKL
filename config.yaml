@@ -1,0 +1,226 @@
+app:
+  name: "AutoML Framework"
+  version: "2.0.0"
+  debug: false
+  host: "0.0.0.0"
+  port: 8000
+  secret_key: ${SECRET_KEY}
+  allowed_hosts: ["*"]
+  cors_origins: ["*"]
+  docs_url: "/docs"
+  redoc_url: "/redoc"
+
+database:
+  url: ${DATABASE_URL:-"sqlite:///./ml_framework.db"}
+  pool_size: 20
+  max_overflow: 10
+  pool_timeout: 30
+  pool_recycle: 1800
+  echo: false
+  connection_retries: 3
+  retry_interval: 5
+  statement_timeout: 30000
+  idle_in_transaction_session_timeout: 60000
+
+redis:
+  host: ${REDIS_HOST:-"localhost"}
+  port: ${REDIS_PORT:-6379}
+  db: 0
+  password: ${REDIS_PASSWORD:-""}
+  ssl: false
+  encoding: "utf-8"
+  decode_responses: true
+  retry_on_timeout: true
+  health_check_interval: 30
+  max_connections: 10
+  socket_timeout: 5
+  socket_connect_timeout: 5
+  socket_keepalive: true
+
+ml:
+  task_types:
+    - "classification"
+    - "regression"
+    - "clustering"
+    - "dimensionality_reduction"
+  
+  model_selection:
+    cv_folds: 5
+    n_trials: 200
+    timeout: 3600
+    metric:
+      classification: "accuracy"
+      regression: "neg_mean_squared_error"
+      clustering: "silhouette"
+    early_stopping:
+      enabled: true
+      patience: 10
+      min_delta: 0.001
+    pruning:
+      enabled: true
+      n_startup_trials: 5
+      n_warmup_steps: 10
+  
+  training:
+    test_size: 0.2
+    random_state: 42
+    min_samples: 100
+    improvement_threshold: 0.01
+    max_training_time: 7200
+    validation_split: 0.1
+    shuffle: true
+    stratify: true
+    batch_size: 32
+    epochs: 100
+    early_stopping: true
+    patience: 10
+    class_weight: "balanced"
+    sample_weight_column: null
+    gpu_enabled: false
+    mixed_precision: false
+    
+  monitoring:
+    drift_threshold: 0.05
+    performance_threshold: 0.95
+    check_interval: 3600
+    metrics_history_days: 30
+    alert_cooldown: 3600
+    min_samples_drift: 1000
+    drift_detection:
+      method: "ks_test"
+      significance_level: 0.05
+      window_size: 1000
+      reference_size: 10000
+    
+  model_management:
+    max_models: 100
+    backup_enabled: true
+    backup_interval: 86400
+    cleanup_interval: 604800
+    model_cache_ttl: 3600
+    versioning:
+      enabled: true
+      strategy: "semantic"
+      auto_increment: true
+    
+  preprocessing:
+    missing_values:
+      strategy: "iterative"
+      max_iter: 10
+      n_nearest_features: 10
+    outliers:
+      detection_method: "isolation_forest"
+      contamination: 0.1
+    feature_selection:
+      method: "mutual_info"
+      k_best: 20
+    scaling:
+      method: "robust"
+      with_mean: true
+      with_std: true
+    encoding:
+      method: "onehot"
+      handle_unknown: "ignore"
+      max_categories: 20
+
+logging:
+  level: ${LOG_LEVEL:-"INFO"}
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/app.log"
+  max_size: 10485760
+  backup_count: 5
+  json_format: true
+  log_sql: false
+  rotation_time: "midnight"
+  compression: true
+  retention_days: 30
+
+security:
+  algorithm: "HS256"
+  access_token_expire_minutes: 30
+  refresh_token_expire_days: 7
+  password_min_length: 8
+  password_max_length: 50
+  rate_limit:
+    enabled: true
+    requests: 100
+    window_seconds: 60
+  cors:
+    allow_credentials: true
+    allow_methods: ["*"]
+    allow_headers: ["*"]
+    max_age: 3600
+  ssl:
+    enabled: false
+    cert_file: ""
+    key_file: ""
+
+email:
+  smtp_server: ${SMTP_SERVER}
+  smtp_port: ${SMTP_PORT:-587}
+  sender: ${EMAIL_SENDER}
+  password: ${EMAIL_PASSWORD}
+  use_tls: true
+  timeout: 60
+  alert_recipients: []
+  templates_dir: "templates/email"
+  retry:
+    max_attempts: 3
+    delay_seconds: 5
+
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    port: 9090
+    retention_days: 15
+  grafana:
+    enabled: true
+    port: 3000
+  health_check:
+    enabled: true
+    interval: 60
+    timeout: 10
+    endpoints:
+      - "/health"
+      - "/metrics"
+  alerts:
+    slack_webhook: ""
+    telegram_token: ""
+    telegram_chat_id: ""
+
+cache:
+  type: "redis"
+  default_ttl: 3600
+  key_prefix: "mlf:"
+  serializer: "json"
+  compression: true
+  max_memory: "1gb"
+  eviction_policy: "allkeys-lru"
+  local_cache_size: 1000
+  local_cache_ttl: 300
+
+storage:
+  type: "local"
+  models_dir: "models"
+  reports_dir: "reports"
+  temp_dir: "temp"
+  backup_dir: "backups"
+  max_file_size: 104857600
+  allowed_extensions: [".csv", ".xlsx", ".json"]
+  compression:
+    enabled: true
+    algorithm: "gzip"
+    level: 6
+
+reporting:
+  enabled: true
+  format: "pdf"
+  template_dir: "templates/reports"
+  plots:
+    theme: "plotly_dark"
+    width: 800
+    height: 600
+    interactive: true
+    dpi: 300
+    font_family: "Arial"

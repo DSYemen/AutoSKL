@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}تقرير النموذج - {{ model_id }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="bg-white shadow rounded-lg">
+    <!-- رأس التقرير -->
+    <div class="px-4 py-5 border-b border-gray-200 sm:px-6 flex justify-between items-center">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900">تقرير النموذج: {{ model_id }}</h2>
+            <p class="mt-1 text-sm text-gray-500">تاريخ التقرير: {{ metadata.creation_date }}</p>
+        </div>
+        <div class="flex space-x-4 space-x-reverse">
+            <button onclick="exportToPDF()" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+                تصدير PDF
+            </button>
+            <button onclick="exportToExcel()" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                تصدير Excel
+            </button>
+        </div>
+    </div>
+
+    <!-- معلومات النموذج -->
+    <div class="px-4 py-5 sm:p-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- معلومات أساسية -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">معلومات أساسية</h3>
+                <dl class="grid grid-cols-1 gap-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">نوع المهمة</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ metadata.task_type }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">عمود الهدف</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ metadata.target_column }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">عدد الميزات</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ metadata.feature_names|length }}</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <!-- مقاييس الأداء -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">مقاييس الأداء</h3>
+                <div id="metricsChart"></div>
+            </div>
+        </div>
+
+        <!-- أهمية الميزات -->
+        <div class="mt-8">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">أهمية الميزات</h3>
+            <div id="featureImportanceChart" class="h-96"></div>
+        </div>
+
+        <!-- مصفوفة الارتباك (للتصنيف) -->
+        {% if metadata.task_type == 'classification' %}
+        <div class="mt-8">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">مصفوفة الارتباك</h3>
+            <div id="confusionMatrixChart" class="h-96"></div>
+        </div>
+        {% endif %}
+
+        <!-- تاريخ الأداء -->
+        <div class="mt-8">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">تاريخ الأداء</h3>
+            <div id="performanceHistoryChart" class="h-96"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // دالة تصدير التقرير كـ PDF
+    async function exportToPDF() {
+        const element = document.querySelector('.bg-white.shadow');
+        const opt = {
+            margin: 1,
+            filename: `model_report_${model_id}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+        };
+        
+        try {
+            await html2pdf().set(opt).from(element).save();
+        } catch (error) {
+            console.error('Error exporting PDF:', error);
+            Swal.fire({
+                title: 'خطأ!',
+                text: 'حدث خطأ أثناء تصدير التقرير',
+                icon: 'error',
+                confirmButtonText: 'حسناً'
+            });
+        }
+    }
+
+    // إنشاء الرسوم البيانية
+    function createMetricsChart() {
+        const metrics = {{ evaluation_results.metrics | tojson }};
+        const values = Object.values(metrics);
+        const labels = Object.keys(metrics).map(key => key.replace('_', ' ').toUpperCase());
+
+        const data = [{
+            type: 'bar',
+            x: labels,
+            y: values,
+            marker: {
+                color: 'rgb(79, 70, 229)'
+            }
+        }];
+
+        const layout = {
+            title: 'مقاييس الأداء',
+            font: { size: 14 },
+            height: 300,
+            margin: { t: 30, b: 40, l: 60, r: 40 }
+        };
+
+        Plotly.newPlot('metricsChart', data, layout, {responsive: true});
+    }
+
+    function createFeatureImportanceChart() {
+        const importance = {{ evaluation_results.feature_importance | tojson }};
+        const sortedFeatures = Object.entries(importance)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 15);
+
+        const data = [{
+            type: 'bar',
+            x: sortedFeatures.map(f => f[1]),
+            y: sortedFeatures.map(f => f[0]),
+            orientation: 'h',
+            marker: {
+                color: 'rgb(79, 70, 229)'
+            }
+        }];
+
+        const layout = {
+            title: 'أهمية الميزات (أعلى 15)',
+            font: { size: 14 },
+            height: 400,
+            margin: { t: 30, b: 40, l: 200, r: 40 },
+            xaxis: { title: 'درجة الأهمية' }
+        };
+
+        Plotly.newPlot('featureImportanceChart', data, layout, {responsive: true});
+    }
+
+    {% if metadata.task_type == 'classification' %}
+    function createConfusionMatrixChart() {
+        const confusionMatrix = {{ evaluation_results.confusion_matrix | tojson }};
+        const data = [{
+            type: 'heatmap',
+            z: confusionMatrix,
+            x: ['Predicted 0', 'Predicted 1'],
+            y: ['Actual 0', 'Actual 1'],
+            colorscale: 'Viridis'
+        }];
+
+        const layout = {
+            title: 'مصفوفة الارتباك',
+            font: { size: 14 },
+            height: 400,
+            margin: { t: 30, b: 40, l: 100, r: 40 }
+        };
+
+        Plotly.newPlot('confusionMatrixChart', data, layout, {responsive: true});
+    }
+    {% endif %}
+
+    // تحميل الرسوم البيانية عند تحميل الصفحة
+    document.addEventListener('DOMContentLoaded', function() {
+        createMetricsChart();
+        createFeatureImportanceChart();
+        {% if metadata.task_type == 'classification' %}
+            createConfusionMatrixChart();
+        {% endif %}
+    });
+</script>
+{% endblock %} 

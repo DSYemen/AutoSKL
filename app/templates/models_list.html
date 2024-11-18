@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}قائمة النماذج - إطار عمل التعلم الآلي{% endblock %}
+
+{% block content %}
+<div class="bg-white shadow rounded-lg">
+    <!-- رأس الصفحة -->
+    <div class="px-4 py-5 border-b border-gray-200 sm:px-6 flex justify-between items-center">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900">النماذج المدربة</h2>
+            <p class="mt-1 text-sm text-gray-500">إدارة ومراقبة جميع النماذج المدربة</p>
+        </div>
+        <div>
+            <button onclick="window.location.href='/'" 
+                    class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+                تدريب نموذج جديد
+            </button>
+        </div>
+    </div>
+
+    <!-- فلترة وبحث -->
+    <div class="px-4 py-4 border-b border-gray-200">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">نوع المهمة</label>
+                <select id="taskTypeFilter" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                    <option value="">الكل</option>
+                    <option value="classification">تصنيف</option>
+                    <option value="regression">انحدار</option>
+                    <option value="clustering">تجميع</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">الحالة</label>
+                <select id="statusFilter" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                    <option value="">الكل</option>
+                    <option value="active">نشط</option>
+                    <option value="inactive">غير نشط</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">ترتيب حسب</label>
+                <select id="sortBy" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                    <option value="date_desc">الأحدث أولاً</option>
+                    <option value="date_asc">الأقدم أولاً</option>
+                    <option value="accuracy_desc">الأعلى دقة</option>
+                    <option value="accuracy_asc">الأقل دقة</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">بحث</label>
+                <input type="text" id="searchInput" 
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                       placeholder="ابحث عن نموذج...">
+            </div>
+        </div>
+    </div>
+
+    <!-- قائمة النماذج -->
+    <div class="px-4 py-5 sm:p-6">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">معرف النموذج</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">نوع المهمة</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">عمود الهدف</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الدقة</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الحالة</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">تاريخ الإنشاء</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الإجراءات</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200" id="modelsList">
+                    {% for model in models %}
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ model.model_id }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ model.task_type }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ model.target_column }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ "%.1f"|format(model.accuracy * 100) }}%</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                {% if model.status == 'active' %}
+                                    bg-green-100 text-green-800
+                                {% else %}
+                                    bg-red-100 text-red-800
+                                {% endif %}">
+                                {{ model.status }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ model.creation_date }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div class="flex space-x-2 space-x-reverse">
+                                <button onclick="viewModel('{{ model.model_id }}')" 
+                                        class="text-indigo-600 hover:text-indigo-900">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button onclick="viewReport('{{ model.model_id }}')"
+                                        class="text-green-600 hover:text-green-900">
+                                    <i class="bi bi-file-text"></i>
+                                </button>
+                                <button onclick="viewMonitoring('{{ model.model_id }}')"
+                                        class="text-blue-600 hover:text-blue-900">
+                                    <i class="bi bi-graph-up"></i>
+                                </button>
+                                <button onclick="deleteModel('{{ model.model_id }}')"
+                                        class="text-red-600 hover:text-red-900">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // فلترة وبحث
+    function filterModels() {
+        const taskType = document.getElementById('taskTypeFilter').value;
+        const status = document.getElementById('statusFilter').value;
+        const search = document.getElementById('searchInput').value.toLowerCase();
+        const rows = document.getElementById('modelsList').getElementsByTagName('tr');
+
+        for (let row of rows) {
+            const modelType = row.cells[1].textContent;
+            const modelStatus = row.cells[4].textContent.trim();
+            const modelId = row.cells[0].textContent;
+
+            const matchesTaskType = !taskType || modelType === taskType;
+            const matchesStatus = !status || modelStatus === status;
+            const matchesSearch = !search || 
+                                modelId.toLowerCase().includes(search) || 
+                                modelType.toLowerCase().includes(search);
+
+            row.style.display = matchesTaskType && matchesStatus && matchesSearch ? '' : 'none';
+        }
+    }
+
+    // إضافة مستمعي الأحداث
+    document.getElementById('taskTypeFilter').addEventListener('change', filterModels);
+    document.getElementById('statusFilter').addEventListener('change', filterModels);
+    document.getElementById('searchInput').addEventListener('input', filterModels);
+    document.getElementById('sortBy').addEventListener('change', sortModels);
+
+    // دوال التنقل
+    function viewModel(modelId) {
+        window.location.href = `/models/${modelId}`;
+    }
+
+    function viewReport(modelId) {
+        window.location.href = `/models/${modelId}/report`;
+    }
+
+    function viewMonitoring(modelId) {
+        window.location.href = `/models/${modelId}/monitoring`;
+    }
+
+    async function deleteModel(modelId) {
+        if (await confirmDelete(modelId)) {
+            try {
+                const response = await fetch(`/api/models/${modelId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showSuccess('تم حذف النموذج بنجاح');
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    showError('حدث خطأ أثناء حذف النموذج');
+                }
+            } catch (error) {
+                console.error(error);
+                showError('حدث خطأ أثناء حذف النموذج');
+            }
+        }
+    }
+
+    async function confirmDelete(modelId) {
+        const result = await Swal.fire({
+            title: 'هل أنت متأكد؟',
+            text: `سيتم حذف النموذج ${modelId} نهائياً`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'نعم، احذف',
+            cancelButtonText: 'إلغاء'
+        });
+
+        return result.isConfirmed;
+    }
+</script>
+{% endblock %} 

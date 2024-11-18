@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white shadow-lg rounded-lg overflow-hidden">
+    <!-- رأس الصفحة -->
+    <div class="p-6 bg-gradient-to-r from-indigo-500 to-purple-600">
+        <h1 class="text-2xl font-bold text-white">تدريب نموذج جديد</h1>
+        <p class="text-indigo-100 mt-2">قم بتحميل البيانات وتكوين معلمات النموذج</p>
+    </div>
+
+    <!-- نموذج التدريب -->
+    <form id="training-form" class="p-6 space-y-6">
+        <!-- تحميل البيانات -->
+        <div class="space-y-4">
+            <h2 class="text-lg font-semibold text-gray-900">البيانات التدريبية</h2>
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-500 transition-colors duration-300" 
+                 id="drop-zone"
+                 ondrop="handleDrop(event)"
+                 ondragover="handleDragOver(event)"
+                 ondragleave="handleDragLeave(event)">
+                <div class="space-y-2">
+                    <i class="fas fa-cloud-upload-alt text-4xl text-gray-400"></i>
+                    <p class="text-gray-600">اسحب وأفلت ملف البيانات هنا أو</p>
+                    <label class="inline-block px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg cursor-pointer hover:bg-indigo-100 transition-colors">
+                        <span>اختر ملفاً</span>
+                        <input type="file" id="data-file" accept=".csv,.xlsx,.xls" class="hidden" onchange="handleFileSelect(event)">
+                    </label>
+                    <p class="text-sm text-gray-500">CSV أو Excel فقط، الحد الأقصى 100MB</p>
+                </div>
+                <div id="file-info" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="text-sm space-y-2">
+                        <p class="font-semibold text-gray-700">معلومات الملف:</p>
+                        <div id="file-stats" class="grid grid-cols-2 gap-4">
+                            <!-- سيتم ملء هذا القسم ديناميكياً -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- إعدادات النموذج -->
+        <div class="space-y-4">
+            <h2 class="text-lg font-semibold text-gray-900">إعدادات النموذج</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- نوع المهمة -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">نوع المهمة</label>
+                    <select id="task-type" name="task_type" required
+                            class="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="classification">تصنيف</option>
+                        <option value="regression">انحدار</option>
+                        <option value="clustering">تجميع</option>
+                    </select>
+                </div>
+
+                <!-- عمود الهدف -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">عمود الهدف</label>
+                    <select id="target-column" name="target_column" required disabled
+                            class="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">اختر عمود الهدف...</option>
+                    </select>
+                </div>
+
+                <!-- إعدادات متقدمة -->
+                <div class="col-span-2">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-sm font-medium text-gray-700">إعدادات متقدمة</label>
+                        <button type="button" id="toggle-advanced" 
+                                class="text-sm text-indigo-600 hover:text-indigo-800">
+                            إظهار/إخفاء
+                        </button>
+                    </div>
+                    <div id="advanced-settings" class="hidden space-y-4 p-4 bg-gray-50 rounded-lg">
+                        <!-- معالجة القيم المفقودة -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">معالجة القيم المفقودة</label>
+                            <select id="missing-values-strategy" name="missing_values_strategy"
+                                    class="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="mean">المتوسط</option>
+                                <option value="median">الوسيط</option>
+                                <option value="most_frequent">القيمة الأكثر تكراراً</option>
+                                <option value="constant">قيمة ثابتة</option>
+                            </select>
+                        </div>
+
+                        <!-- اختيار الميزات -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">طريقة اختيار الميزات</label>
+                            <select id="feature-selection" name="feature_selection"
+                                    class="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="none">بدون اختيار</option>
+                                <option value="mutual_info">المعلومات المتبادلة</option>
+                                <option value="chi2">اختبار كاي تربيع</option>
+                                <option value="f_classif">تحليل التباين</option>
+                            </select>
+                        </div>
+
+                        <!-- التحقق المتقاطع -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">عدد طيات التحقق المتقاطع</label>
+                            <input type="number" id="cv-folds" name="cv_folds" min="2" max="10" value="5"
+                                   class="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- زر التدريب -->
+        <div class="flex justify-end">
+            <button type="submit" 
+                    class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled
+                    id="train-button">
+                <i class="fas fa-cog mr-2"></i>
+                بدء التدريب
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- نافذة تقدم التدريب -->
+<div id="training-progress-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3 text-center">
+            <h3 class="text-lg leading-6 font-medium text-gray-900">جاري التدريب...</h3>
+            <div class="mt-2 px-7 py-3">
+                <div class="bg-gray-200 rounded-full h-2.5">
+                    <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <p id="progress-percentage" class="text-sm font-semibold text-gray-700 mt-2">0%</p>
+                <p id="progress-status" class="text-sm text-gray-500 mt-1">جاري تحميل البيانات...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نافذة النتائج -->
+<div id="results-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full">
+    <div class="relative top-20 mx-auto p-5 border w-3/4 max-w-4xl shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">نتائج التدريب</h3>
+            <div id="results-content" class="space-y-4">
+                <!-- سيتم ملء هذا القسم ديناميكياً -->
+            </div>
+            <div class="mt-4 flex justify-end space-x-4">
+                <button onclick="closeResultsModal()" 
+                        class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">
+                    إغلاق
+                </button>
+                <button onclick="viewModelDetails()" 
+                        class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                    عرض تفاصيل النموذج
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let trainingEventSource = null;
+
+// معالجة اختيار الملف
+async function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // التحقق من حجم الملف
+    if (file.size > 100 * 1024 * 1024) {  // 100MB
+        showToast('حجم الملف يتجاوز الحد الأقصى (100MB)', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/api/v1/data/preview', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+
+        const data = await response.json();
+        
+        // تحديث قائمة عمود الهدف
+        const targetSelect = document.getElementById('target-column');
+        targetSelect.innerHTML = '<option value="">اختر عمود الهدف...</option>';
+        data.columns.forEach(column => {
+            targetSelect.innerHTML += `<option value="${column}">${column}</option>`;
+        });
+        targetSelect.disabled = false;
+
+        // عرض معلومات الملف
+        const fileStats = document.getElementById('file-stats');
+        fileStats.innerHTML = `
+            <div>
+                <p class="text-gray-600">الأعمدة العددية:</p>
+                <p class="font-semibold">${data.numeric_columns.length}</p>
+            </div>
+            <div>
+                <p class="text-gray-600">الأعمدة الفئوية:</p>
+                <p class="font-semibold">${data.categorical_columns.length}</p>
+            </div>
+            <div>
+                <p class="text-gray-600">إجمالي الأعمدة:</p>
+                <p class="font-semibold">${data.columns.length}</p>
+            </div>
+            <div>
+                <p class="text-gray-600">القيم المفقودة:</p>
+                <p class="font-semibold">${Object.values(data.missing_values).some(v => v > 0) ? 'نعم' : 'لا'}</p>
+            </div>
+        `;
+        document.getElementById('file-info').classList.remove('hidden');
+
+        // تفعيل زر التدريب
+        document.getElementById('train-button').disabled = false;
+
+    } catch (error) {
+        console.error('خطأ:', error);
+        showToast('فشل قراءة الملف: ' + error.message, 'error');
+    }
+}
+
+// معالجة السحب والإفلات
+function handleDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const dt = event.dataTransfer;
+    const files = dt.files;
+
+    if (files.length) {
+        const fileInput = document.getElementById('data-file');
+        fileInput.files = files;
+        handleFileSelect({ target: fileInput });
+    }
+    
+    event.target.classList.remove('border-indigo-500');
+}
+
+function handleDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.target.classList.add('border-indigo-500');
+}
+
+function handleDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.target.classList.remove('border-indigo-500');
+}
+
+// معالجة تقديم النموذج
+document.getElementById('training-form').addEventListener('submit', async function(event) {
+    event.preventDefault();
+    
+    const formData = new FormData();
+    formData.append('file', document.getElementById('data-file').files[0]);
+    formData.append('task_type', document.getElementById('task-type').value);
+    formData.append('target_column', document.getElementById('target-column').value);
+
+    // إضافة الإعدادات المتقدمة
+    const advancedSettings = {
+        missing_values_strategy: document.getElementById('missing-values-strategy').value,
+        feature_selection: document.getElementById('feature-selection').value,
+        cv_folds: document.getElementById('cv-folds').value
+    };
+    formData.append('training_params', JSON.stringify(advancedSettings));
+
+    try {
+        document.getElementById('training-progress-modal').classList.remove('hidden');
+        
+        const response = await fetch('/api/v1/models/train', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+
+        const data = await response.json();
+        showTrainingProgress(data.model_id);
+
+    } catch (error) {
+        console.error('خطأ:', error);
+        showToast('فشل تدريب النموذج: ' + error.message, 'error');
+        document.getElementById('training-progress-modal').classList.add('hidden');
+    }
+});
+
+// عرض تقدم التدريب
+function showTrainingProgress(modelId) {
+    if (trainingEventSource) {
+        trainingEventSource.close();
+    }
+    
+    trainingEventSource = new EventSource(`/api/v1/training-progress/${modelId}`);
+    
+    trainingEventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        
+        // تحديث شريط التقدم
+        document.getElementById('progress-bar').style.width = `${data.progress}%`;
+        document.getElementById('progress-percentage').textContent = `${data.progress}%`;
+        document.getElementById('progress-status').textContent = data.status;
+        
+        // إغلاق الاتصال عند اكتمال التدريب
+        if (data.progress === 100 || data.status.includes('error')) {
+            trainingEventSource.close();
+            document.getElementById('training-progress-modal').classList.add('hidden');
+            
+            if (data.status.includes('error')) {
+                showToast('فشل تدريب النموذج', 'error');
+            } else {
+                showResults(modelId);
+            }
+        }
+    };
+    
+    trainingEventSource.onerror = () => {
+        trainingEventSource.close();
+        document.getElementById('training-progress-modal').classList.add('hidden');
+        showToast('فقد الاتصال بالخادم', 'error');
+    };
+}
+
+// عرض نتائج التدريب
+async function showResults(modelId) {
+    try {
+        const response = await fetch(`/api/v1/models/${modelId}/info`);
+        if (!response.ok) throw new Error('فشل جلب معلومات النموذج');
+        
+        const modelInfo = await response.json();
+        
+        const resultsContent = document.getElementById('results-content');
+        resultsContent.innerHTML = `
+            <div class="grid grid-cols-2 gap-4">
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <h4 class="font-semibold mb-2">معلومات النموذج</h4>
+                    <p>المعرف: ${modelInfo.model_id}</p>
+                    <p>نوع المهمة: ${modelInfo.task_type}</p>
+                    <p>عمود الهدف: ${modelInfo.target_column}</p>
+                </div>
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <h4 class="font-semibold mb-2">مقاييس الأداء</h4>
+                    ${Object.entries(modelInfo.evaluation_results.metrics).map(([key, value]) => 
+                        `<p>${key}: ${value.toFixed(4)}</p>`
+                    ).join('')}
+                </div>
+            </div>
+            <div class="mt-4">
+                <h4 class="font-semibold mb-2">أهمية الميزات</h4>
+                <div id="feature-importance-plot"></div>
+            </div>
+        `;
+        
+        document.getElementById('results-modal').classList.remove('hidden');
+        
+        // إنشاء مخطط أهمية الميزات
+        if (modelInfo.feature_importance) {
+            const trace = {
+                y: Object.keys(modelInfo.feature_importance),
+                x: Object.values(modelInfo.feature_importance),
+                type: 'bar',
+                orientation: 'h'
+            };
+            
+            const layout = {
+                title: 'أهمية الميزات',
+                xaxis: { title: 'الأهمية' },
+                yaxis: { title: 'الميزة' },
+                height: 400,
+                margin: { l: 150 }
+            };
+            
+            Plotly.newPlot('feature-importance-plot', [trace], layout);
+        }
+        
+    } catch (error) {
+        console.error('خطأ:', error);
+        showToast('فشل عرض النتائج: ' + error.message, 'error');
+    }
+}
+
+// إغلاق نافذة النتائج
+function closeResultsModal() {
+    document.getElementById('results-modal').classList.add('hidden');
+}
+
+// الانتقال إلى صفحة تفاصيل النموذج
+function viewModelDetails() {
+    const modelId = document.querySelector('[data-model-id]').dataset.modelId;
+    window.location.href = `/models/${modelId}`;
+}
+
+// عرض رسائل التنبيه
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg text-white ${
+        type === 'error' ? 'bg-red-500' : 'bg-green-500'
+    }`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
+// تبديل الإعدادات المتقدمة
+document.getElementById('toggle-advanced').addEventListener('click', function() {
+    const advancedSettings = document.getElementById('advanced-settings');
+    advancedSettings.classList.toggle('hidden');
+});
+</script>
+{% endblock %} 

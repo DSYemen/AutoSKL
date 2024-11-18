@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block title %}الإعدادات - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- رأس الصفحة -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">إعدادات النظام</h1>
+        <div>
+            <button class="btn btn-outline-primary me-2" onclick="resetSettings()">
+                <i class="material-icons">restore</i>
+                استعادة الافتراضي
+            </button>
+            <button class="btn btn-primary" onclick="saveSettings()">
+                <i class="material-icons">save</i>
+                حفظ التغييرات
+            </button>
+        </div>
+    </div>
+
+    <!-- نموذج الإعدادات -->
+    <form id="settingsForm">
+        <!-- إعدادات النظام -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="material-icons align-middle me-1">settings</i>
+                    إعدادات النظام الأساسية
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">اسم التطبيق</label>
+                            <input type="text" class="form-control" name="app.name" value="{{ settings.app.name }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">المنفذ</label>
+                            <input type="number" class="form-control" name="app.port" value="{{ settings.app.port }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="app.debug" {% if settings.app.debug %}checked{% endif %}>
+                                <label class="form-check-label">وضع التصحيح</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- إعدادات التعلم الآلي -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="material-icons align-middle me-1">psychology</i>
+                    إعدادات التعلم الآلي
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">عدد طيات التحقق المتقاطع</label>
+                            <input type="number" class="form-control" name="ml.model_selection.cv_folds" 
+                                   value="{{ settings.ml.model_selection.cv_folds }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">حجم بيانات الاختبار</label>
+                            <input type="number" class="form-control" name="ml.training.test_size" 
+                                   value="{{ settings.ml.training.test_size }}" step="0.1" min="0" max="1">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">حد الانحراف</label>
+                            <input type="number" class="form-control" name="ml.monitoring.drift_threshold" 
+                                   value="{{ settings.ml.monitoring.drift_threshold }}" step="0.01">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">فترة فحص المراقبة (ثواني)</label>
+                            <input type="number" class="form-control" name="ml.monitoring.check_interval" 
+                                   value="{{ settings.ml.monitoring.check_interval }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- إعدادات البريد الإلكتروني -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="material-icons align-middle me-1">email</i>
+                    إعدادات البريد الإلكتروني
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">خادم SMTP</label>
+                            <input type="text" class="form-control" name="email.smtp_server" 
+                                   value="{{ settings.email.smtp_server }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">منفذ SMTP</label>
+                            <input type="number" class="form-control" name="email.smtp_port" 
+                                   value="{{ settings.email.smtp_port }}">
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="mb-3">
+                            <label class="form-label">مستلمو التنبيهات</label>
+                            <input type="text" class="form-control" name="email.alert_recipients" 
+                                   value="{{ settings.email.alert_recipients|join(', ') }}"
+                                   placeholder="email1@example.com, email2@example.com">
+                            <small class="form-text text-muted">افصل بين العناوين بفواصل</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- إعدادات التخزين المؤقت -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="material-icons align-middle me-1">storage</i>
+                    إعدادات التخزين المؤقت
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">مدة التخزين المؤقت (ثواني)</label>
+                            <input type="number" class="form-control" name="cache.default_ttl" 
+                                   value="{{ settings.cache.default_ttl }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">الحد الأقصى للذاكرة</label>
+                            <input type="text" class="form-control" name="cache.max_memory" 
+                                   value="{{ settings.cache.max_memory }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="cache.compression" 
+                                       {% if settings.cache.compression %}checked{% endif %}>
+                                <label class="form-check-label">تفعيل الضغط</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- نافذة تأكيد استعادة الإعدادات -->
+<div class="modal fade" id="resetConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">تأكيد الاستعادة</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                هل أنت متأكد من استعادة الإعدادات الافتراضية؟ سيتم فقدان جميع التغييرات.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-danger" onclick="confirmReset()">استعادة</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// حفظ الإعدادات
+async function saveSettings() {
+    const form = document.getElementById('settingsForm');
+    const formData = new FormData(form);
+    const settings = {};
+    
+    // تحويل البيانات إلى كائن
+    for (let [key, value] of formData.entries()) {
+        const keys = key.split('.');
+        let current = settings;
+        for (let i = 0; i < keys.length - 1; i++) {
+            current[keys[i]] = current[keys[i]] || {};
+            current = current[keys[i]];
+        }
+        current[keys[keys.length - 1]] = value;
+    }
+    
+    try {
+        const response = await fetch('/api/v1/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(settings)
+        });
+        
+        if (!response.ok) throw new Error('فشل حفظ الإعدادات');
+        
+        showAlert('success', 'تم حفظ الإعدادات بنجاح');
+        setTimeout(() => location.reload(), 2000);
+        
+    } catch (error) {
+        showAlert('error', error.message);
+    }
+}
+
+// استعادة الإعدادات
+function resetSettings() {
+    const modal = new bootstrap.Modal(document.getElementById('resetConfirmModal'));
+    modal.show();
+}
+
+// تأكيد استعادة الإعدادات
+async function confirmReset() {
+    try {
+        const response = await fetch('/api/v1/settings/reset', {
+            method: 'POST'
+        });
+        
+        if (!response.ok) throw new Error('فشل استعادة الإعدادات');
+        
+        showAlert('success', 'تم استعادة الإعدادات الافتراضية');
+        setTimeout(() => location.reload(), 2000);
+        
+    } catch (error) {
+        showAlert('error', error.message);
+    }
+}
+
+// عرض التنبيهات
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.querySelector('.container-fluid').prepend(alertDiv);
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+</script>
+{% endblock %} 

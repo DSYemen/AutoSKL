@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+
+{% block title %}إدارة المستخدمين - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- رأس الصفحة -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">إدارة المستخدمين</h1>
+        <div>
+            <button class="btn btn-outline-primary me-2" onclick="exportUsers()">
+                <i class="material-icons">file_download</i>
+                تصدير
+            </button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newUserModal">
+                <i class="material-icons">person_add</i>
+                مستخدم جديد
+            </button>
+        </div>
+    </div>
+
+    <!-- بطاقات الإحصائيات -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">إجمالي المستخدمين</h5>
+                    <h2 class="card-text">{{ stats.total_users }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">المستخدمين النشطين</h5>
+                    <h2 class="card-text">{{ stats.active_users }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">المشرفين</h5>
+                    <h2 class="card-text">{{ stats.admin_users }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">تسجيلات الدخول اليوم</h5>
+                    <h2 class="card-text">{{ stats.logins_today }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- جدول المستخدمين -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>اسم المستخدم</th>
+                            <th>البريد الإلكتروني</th>
+                            <th>الدور</th>
+                            <th>الحالة</th>
+                            <th>آخر تسجيل دخول</th>
+                            <th>تاريخ الإنشاء</th>
+                            <th>الصلاحيات</th>
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.email }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'primary' if user.role == 'admin' else 'info' }}">
+                                    {{ user.role }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if user.status == 'active' else 'danger' }}">
+                                    {{ user.status }}
+                                </span>
+                            </td>
+                            <td>{{ user.last_login|datetime }}</td>
+                            <td>{{ user.created_at|datetime }}</td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-1">
+                                    {% for permission in user.permissions %}
+                                        <span class="badge bg-secondary">{{ permission }}</span>
+                                    {% endfor %}
+                                </div>
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-outline-primary" 
+                                            onclick="editUser('{{ user.id }}')">
+                                        <i class="material-icons">edit</i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-{{ 'danger' if user.status == 'active' else 'success' }}"
+                                            onclick="toggleUserStatus('{{ user.id }}', '{{ user.status }}')">
+                                        <i class="material-icons">
+                                            {{ 'lock' if user.status == 'active' else 'lock_open' }}
+                                        </i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-info"
+                                            onclick="resetPassword('{{ user.id }}')">
+                                        <i class="material-icons">key</i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            onclick="deleteUser('{{ user.id }}')">
+                                        <i class="material-icons">delete</i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نافذة المستخدم الجديد -->
+<div class="modal fade" id="newUserModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">إضافة مستخدم جديد</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="newUserForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">اسم المستخدم</label>
+                            <input type="text" class="form-control" name="username" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">البريد الإلكتروني</label>
+                            <input type="email" class="form-control" name="email" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">كلمة المرور</label>
+                            <input type="password" class="form-control" name="password" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">تأكيد كلمة المرور</label>
+                            <input type="password" class="form-control" name="confirm_password" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">الدور</label>
+                            <select class="form-select" name="role" required>
+                                <option value="user">مستخدم</option>
+                                <option value="admin">مشرف</option>
+                                <option value="viewer">مشاهد</option>
+                            </select>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">الصلاحيات</label>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" name="permissions" value="models_view">
+                                <label class="form-check-label">عرض النماذج</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" name="permissions" value="models_create">
+                                <label class="form-check-label">إنشاء النماذج</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" name="permissions" value="models_edit">
+                                <label class="form-check-label">تعديل النماذج</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" name="permissions" value="models_delete">
+                                <label class="form-check-label">حذف النماذج</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" name="permissions" value="predictions">
+                                <label class="form-check-label">إجراء التنبؤات</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" name="permissions" value="monitoring">
+                                <label class="form-check-label">مراقبة النماذج</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" name="permissions" value="reports">
+                                <label class="form-check-label">التقارير</label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-primary" onclick="createUser()">إضافة</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نافذة تعديل المستخدم -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">تعديل المستخدم</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editUserForm">
+                    <!-- نفس حقول نموذج المستخدم الجديد -->
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-primary" onclick="updateUser()">حفظ</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// إنشاء مستخدم جديد
+async function createUser() {
+    const form = document.getElementById('newUserForm');
+    const formData = new FormData(form);
+    
+    try {
+        const response = await fetch('/api/v1/users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(Object.fromEntries(formData))
+        });
+        
+        if (!response.ok) throw new Error('فشل إنشاء المستخدم');
+        
+        showAlert('success', 'تم إنشاء المستخدم بنجاح');
+        setTimeout(() => location.reload(), 2000);
+        
+    } catch (error) {
+        showAlert('error', error.message);
+    }
+}
+
+// تعديل مستخدم
+async function editUser(userId) {
+    try {
+        const response = await fetch(`/api/v1/users/${userId}`);
+        if (!response.ok) throw new Error('فشل جلب بيانات المستخدم');
+        
+        const user = await response.json();
+        
+        // ملء نموذج التعديل
+        const form = document.getElementById('editUserForm');
+        Object.entries(user).forEach(([key, value]) => {
+            const input = form.elements[key];
+            if (input) {
+                if (input.type === 'checkbox') {
+                    input.checked = value;
+                } else {
+                    input.value = value;
+                }
+            }
+        });
+        
+        // عرض النافذة
+        new bootstrap.Modal(document.getElementById('editUserModal')).show();
+        
+    } catch (error) {
+        showAlert('error', error.message);
+    }
+}
+
+// تحديث مستخدم
+async function updateUser() {
+    const form = document.getElementById('editUserForm');
+    const formData = new FormData(form);
+    const userId = formData.get('id');
+    
+    try {
+        const response = await fetch(`/api/v1/users/${userId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(Object.fromEntries(formData))
+        });
+        
+        if (!response.ok) throw new Error('فشل تحديث المستخدم');
+        
+        showAlert('success', 'تم تحديث المستخدم بنجاح');
+        setTimeout(() => location.reload(), 2000);
+        
+    } catch (error) {
+        showAlert('error', error.message);
+    }
+}
+
+// تغيير حالة المستخدم
+async function toggleUserStatus(userId, currentStatus) {
+    if (!confirm('هل أنت متأكد من تغيير حالة المستخدم؟')) return;
+    
+    try {
+        const response = await fetch(`/api/v1/users/${userId}/status`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                status: currentStatus === 'active' ? 'inactive' : 'active'
+            })
+        });
+        
+        if (!response.ok) throw new Error('فشل تغيير حالة المستخدم');
+        
+        showAlert('success', 'تم تغيير حالة المستخدم بنجاح');
+        setTimeout(() => location.reload(), 2000);
+        
+    } catch (error) {
+        showAlert('error', error.message);
+    }
+}
+
+// إعادة تعيين كلمة المرور
+async function resetPassword(userId) {
+    if (!confirm('هل أنت متأكد من إعادة تعيين كلمة المرور؟')) return;
+    
+    try {
+        const response = await fetch(`/api/v1/users/${userId}/reset-password`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) throw new Error('فشل إعادة تعيين كلمة المرور');
+        
+        const { password } = await response.json();
+        alert(`كلمة المرور الجديدة: ${password}`);
+        
+    } catch (error) {
+        showAlert('error', error.message);
+    }
+}
+
+// حذف مستخدم
+async function deleteUser(userId) {
+    if (!confirm('هل أنت متأكد من حذف المستخدم؟')) return;
+    
+    try {
+        const response = await fetch(`/api/v1/users/${userId}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) throw new Error('فشل حذف المستخدم');
+        
+        showAlert('success', 'تم حذف المستخدم بنجاح');
+        setTimeout(() => location.reload(), 2000);
+        
+    } catch (error) {
+        showAlert('error', error.message);
+    }
+}
+
+// تصدير المستخدمين
+async function exportUsers() {
+    try {
+        const response = await fetch('/api/v1/users/export');
+        if (!response.ok) throw new Error('فشل تصدير المستخدمين');
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `users_${new Date().toISOString()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        
+    } catch (error) {
+        showAlert('error', error.message);
+    }
+}
+
+// عرض التنبيهات
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.querySelector('.container-fluid').prepend(alertDiv);
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+</script>
+{% endblock %} 

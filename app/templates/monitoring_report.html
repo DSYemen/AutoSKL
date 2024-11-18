@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}تقرير المراقبة - {{ model_id }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="bg-white shadow rounded-lg">
+    <!-- رأس التقرير -->
+    <div class="px-4 py-5 border-b border-gray-200 sm:px-6 flex justify-between items-center">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900">تقرير المراقبة: {{ model_id }}</h2>
+            <p class="mt-1 text-sm text-gray-500">آخر تحديث: {{ monitoring_data.last_check }}</p>
+        </div>
+        <div class="flex space-x-4 space-x-reverse">
+            <button onclick="exportToPDF()" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+                تصدير PDF
+            </button>
+            <button onclick="refreshMonitoring()" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                تحديث
+            </button>
+        </div>
+    </div>
+
+    <!-- ملخص الحالة -->
+    <div class="px-4 py-5 sm:p-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- حالة النموذج -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">حالة النموذج</h3>
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        {% if monitoring_data.drift_detected %}
+                        <div class="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
+                            <svg class="h-5 w-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                        {% else %}
+                        <div class="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
+                            <svg class="h-5 w-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="mr-4">
+                        <h4 class="text-sm font-medium text-gray-900">
+                            {% if monitoring_data.drift_detected %}
+                            تم اكتشاف انحراف
+                            {% else %}
+                            النموذج مستقر
+                            {% endif %}
+                        </h4>
+                        <p class="text-sm text-gray-500">
+                            {{ monitoring_data.features_affected }} ميزات متأثرة
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- مقاييس الأداء -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">مقاييس الأداء</h3>
+                <div id="performanceMetricsChart"></div>
+            </div>
+
+            <!-- إحصائيات التنبؤات -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">إحصائيات التنبؤات</h3>
+                <div id="predictionsStatsChart"></div>
+            </div>
+        </div>
+
+        <!-- انحراف البيانات -->
+        <div class="mt-8">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">انحراف البيانات</h3>
+            <div id="dataDistributionChart" class="h-96"></div>
+        </div>
+
+        <!-- تحليل الميزات -->
+        <div class="mt-8">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">تحليل الميزات</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الميزة</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">درجة الانحراف</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الحالة</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">التوصية</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for feature in monitoring_data.feature_analysis %}
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ feature.name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ "%.2f"|format(feature.drift_score) }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                    {% if feature.status == 'stable' %}
+                                        bg-green-100 text-green-800
+                                    {% else %}
+                                        bg-red-100 text-red-800
+                                    {% endif %}">
+                                    {{ feature.status }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ feature.recommendation }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // تحديث المراقبة
+    async function refreshMonitoring() {
+        try {
+            const response = await fetch(`/api/models/${model_id}/monitoring/refresh`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                Swal.fire({
+                    title: 'خطأ!',
+                    text: 'حدث خطأ أثناء تحديث المراقبة',
+                    icon: 'error',
+                    confirmButtonText: 'حسناً'
+                });
+            }
+        } catch (error) {
+            console.error('Error refreshing monitoring:', error);
+            Swal.fire({
+                title: 'خطأ!',
+                text: 'حدث خطأ أثناء تحديث المراقبة',
+                icon: 'error',
+                confirmButtonText: 'حسناً'
+            });
+        }
+    }
+
+    // إنشاء الرسوم البيانية
+    function createPerformanceMetricsChart() {
+        const metrics = {{ monitoring_data.performance_metrics | tojson }};
+        const data = [{
+            type: 'scatter',
+            mode: 'lines+markers',
+            x: metrics.timestamps,
+            y: metrics.values,
+            name: 'الأداء'
+        }];
+
+        const layout = {
+            title: 'تاريخ الأداء',
+            font: { size: 14 },
+            height: 300,
+            margin: { t: 30, b: 40, l: 60, r: 40 },
+            xaxis: { title: 'الوقت' },
+            yaxis: { title: 'الأداء' }
+        };
+
+        Plotly.newPlot('performanceMetricsChart', data, layout, {responsive: true});
+    }
+
+    function createPredictionsStatsChart() {
+        const stats = {{ monitoring_data.predictions_stats | tojson }};
+        const data = [{
+            type: 'bar',
+            x: Object.keys(stats),
+            y: Object.values(stats),
+            marker: {
+                color: 'rgb(79, 70, 229)'
+            }
+        }];
+
+        const layout = {
+            title: 'إحصائيات التنبؤات',
+            font: { size: 14 },
+            height: 300,
+            margin: { t: 30, b: 40, l: 60, r: 40 }
+        };
+
+        Plotly.newPlot('predictionsStatsChart', data, layout, {responsive: true});
+    }
+
+    function createDataDistributionChart() {
+        const distributions = {{ monitoring_data.distributions | tojson }};
+        const data = [{
+            type: 'violin',
+            x: distributions.current,
+            name: 'التوزيع الحالي',
+            side: 'positive',
+            line: {
+                color: 'rgb(79, 70, 229)'
+            }
+        }, {
+            type: 'violin',
+            x: distributions.reference,
+            name: 'التوزيع المرجعي',
+            side: 'negative',
+            line: {
+                color: 'rgb(220, 38, 38)'
+            }
+        }];
+
+        const layout = {
+            title: 'مقارنة توزيع البيانات',
+            font: { size: 14 },
+            height: 400,
+            margin: { t: 30, b: 40, l: 60, r: 40 }
+        };
+
+        Plotly.newPlot('dataDistributionChart', data, layout, {responsive: true});
+    }
+
+    // تحميل الرسوم البيانية عند تحميل الصفحة
+    document.addEventListener('DOMContentLoaded', function() {
+        createPerformanceMetricsChart();
+        createPredictionsStatsChart();
+        createDataDistributionChart();
+    });
+</script>
+{% endblock %} 

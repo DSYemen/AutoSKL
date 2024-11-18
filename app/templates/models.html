@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white shadow-lg rounded-lg overflow-hidden">
+    <!-- رأس الصفحة -->
+    <div class="p-6 bg-gradient-to-r from-indigo-500 to-purple-600">
+        <div class="flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-white">النماذج المدربة</h1>
+            <a href="/models/new" class="bg-white text-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-50 transition-colors">
+                <i class="fas fa-plus-circle mr-2"></i>
+                نموذج جديد
+            </a>
+        </div>
+    </div>
+
+    <!-- فلاتر البحث -->
+    <div class="p-4 border-b bg-gray-50">
+        <div class="flex flex-wrap gap-4">
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">نوع المهمة</label>
+                <select id="task-type-filter" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <option value="">الكل</option>
+                    <option value="classification">تصنيف</option>
+                    <option value="regression">انحدار</option>
+                    <option value="clustering">تجميع</option>
+                </select>
+            </div>
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">الحالة</label>
+                <select id="status-filter" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <option value="">الكل</option>
+                    <option value="active">نشط</option>
+                    <option value="training">قيد التدريب</option>
+                    <option value="inactive">غير نشط</option>
+                </select>
+            </div>
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">البحث</label>
+                <input type="text" id="search" placeholder="ابحث عن نموذج..." 
+                       class="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- قائمة النماذج -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
+        {% for model in models %}
+        <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
+            <div class="p-4">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">{{ model.model_id }}</h3>
+                        <p class="text-sm text-gray-500">{{ model.task_type }}</p>
+                    </div>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full 
+                               {% if model.status == 'active' %}bg-green-100 text-green-800
+                               {% elif model.status == 'training' %}bg-yellow-100 text-yellow-800
+                               {% else %}bg-red-100 text-red-800{% endif %}">
+                        {{ model.status }}
+                    </span>
+                </div>
+                
+                <div class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">الدقة:</span>
+                        <span class="font-medium">{{ "%.2f"|format(model.metrics.accuracy * 100) }}%</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">التنبؤات:</span>
+                        <span class="font-medium">{{ model.predictions_count }}</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">آخر تحديث:</span>
+                        <span class="font-medium">{{ model.last_updated|datetime }}</span>
+                    </div>
+                </div>
+                
+                <div class="mt-4 pt-4 border-t border-gray-200">
+                    <div class="flex justify-between gap-2">
+                        <a href="/models/{{ model.model_id }}" 
+                           class="flex-1 text-center px-3 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors">
+                            <i class="fas fa-chart-line mr-1"></i> التفاصيل
+                        </a>
+                        <button onclick="showPredictModal('{{ model.model_id }}')"
+                                class="flex-1 px-3 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors">
+                            <i class="fas fa-magic mr-1"></i> تنبؤ
+                        </button>
+                        <div class="relative" x-data="{ open: false }">
+                            <button @click="open = !open"
+                                    class="px-3 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <div x-show="open" @click.away="open = false"
+                                 class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                                <a href="/models/{{ model.model_id }}/retrain" 
+                                   class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                    <i class="fas fa-sync mr-2"></i> إعادة تدريب
+                                </a>
+                                <a href="/models/{{ model.model_id }}/export" 
+                                   class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                    <i class="fas fa-download mr-2"></i> تصدير
+                                </a>
+                                <button onclick="deleteModel('{{ model.model_id }}')"
+                                        class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                                    <i class="fas fa-trash mr-2"></i> حذف
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- نافذة التنبؤ -->
+    <div id="predict-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold">تنبؤ جديد</h3>
+                        <button onclick="closePredictModal()" class="text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <form id="predict-form" class="space-y-4">
+                        <input type="hidden" id="predict-model-id">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">البيانات</label>
+                            <div class="flex gap-4">
+                                <div class="flex-1">
+                                    <textarea id="predict-data" rows="5" 
+                                              class="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                              placeholder='{"feature1": 1.0, "feature2": "value"}'></textarea>
+                                </div>
+                                <div class="w-32">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">أو</label>
+                                    <input type="file" id="predict-file" accept=".csv,.xlsx"
+                                           class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4
+                                                  file:rounded-full file:border-0 file:text-sm file:font-semibold
+                                                  file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="checkbox" id="return-probabilities"
+                                   class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <label for="return-probabilities" class="mr-2 text-sm text-gray-700">
+                                إرجاع الاحتمالات
+                            </label>
+                        </div>
+                        <div class="flex justify-end gap-4 mt-6">
+                            <button type="button" onclick="closePredictModal()"
+                                    class="px-4 py-2 text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                                إلغاء
+                            </button>
+                            <button type="submit"
+                                    class="px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors">
+                                <i class="fas fa-magic mr-2"></i> تنبؤ
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // تحديث الفلاتر
+    function updateFilters() {
+        const taskType = document.getElementById('task-type-filter').value;
+        const status = document.getElementById('status-filter').value;
+        const search = document.getElementById('search').value.toLowerCase();
+        
+        document.querySelectorAll('.model-card').forEach(card => {
+            const modelTaskType = card.dataset.taskType;
+            const modelStatus = card.dataset.status;
+            const modelId = card.dataset.modelId.toLowerCase();
+            
+            const matchesTaskType = !taskType || modelTaskType === taskType;
+            const matchesStatus = !status || modelStatus === status;
+            const matchesSearch = !search || modelId.includes(search);
+            
+            card.style.display = matchesTaskType && matchesStatus && matchesSearch ? 'block' : 'none';
+        });
+    }
+    
+    // إظهار نافذة التنبؤ
+    function showPredictModal(modelId) {
+        document.getElementById('predict-model-id').value = modelId;
+        document.getElementById('predict-modal').classList.remove('hidden');
+    }
+    
+    // إغلاق نافذة التنبؤ
+    function closePredictModal() {
+        document.getElementById('predict-modal').classList.add('hidden');
+        document.getElementById('predict-form').reset();
+    }
+    
+    // حذف نموذج
+    async function deleteModel(modelId) {
+        if (confirm('هل أنت متأكد من حذف هذا النموذج؟')) {
+            try {
+                const response = await fetch(`/api/v1/models/${modelId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    showToast('تم حذف النموذج بنجاح', 'success');
+                    location.reload();
+                } else {
+                    const error = await response.json();
+                    showToast(error.message, 'error');
+                }
+            } catch (error) {
+                showToast('حدث خطأ أثناء حذف النموذج', 'error');
+            }
+        }
+    }
+    
+    // إرسال نموذج التنبؤ
+    document.getElementById('predict-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const modelId = document.getElementById('predict-model-id').value;
+        const data = document.getElementById('predict-data').value;
+        const file = document.getElementById('predict-file').files[0];
+        const returnProbabilities = document.getElementById('return-probabilities').checked;
+        
+        try {
+            let requestData;
+            if (file) {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('return_probabilities', returnProbabilities);
+                requestData = formData;
+            } else {
+                requestData = {
+                    data: JSON.parse(data),
+                    return_probabilities: returnProbabilities
+                };
+            }
+            
+            const response = await fetch(`/api/v1/models/${modelId}/predict`, {
+                method: 'POST',
+                body: file ? requestData : JSON.stringify(requestData),
+                headers: file ? {} : {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                showToast('تم إجراء التنبؤ بنجاح', 'success');
+                // عرض النتائج في نافذة منبثقة أو تحويل المستخدم إلى صفحة النتائج
+            } else {
+                const error = await response.json();
+                showToast(error.message, 'error');
+            }
+        } catch (error) {
+            showToast('حدث خطأ أثناء إجراء التنبؤ', 'error');
+        }
+        
+        closePredictModal();
+    });
+    
+    // إضافة مستمعي الأحداث للفلاتر
+    document.getElementById('task-type-filter').addEventListener('change', updateFilters);
+    document.getElementById('status-filter').addEventListener('change', updateFilters);
+    document.getElementById('search').addEventListener('input', updateFilters);
+</script>
+{% endblock %} 

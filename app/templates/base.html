@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title|default("إطار عمل التعلم الآلي") }}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Custom Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <!-- Navbar -->
+    <nav class="bg-indigo-600 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <a href="/" class="text-white font-bold text-xl">
+                            {{ app_name }}
+                        </a>
+                    </div>
+                    <div class="hidden md:block">
+                        <div class="mr-10 flex items-baseline space-x-4">
+                            <a href="/" class="text-white hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium">الرئيسية</a>
+                            <a href="/models" class="text-white hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium">النماذج</a>
+                            <a href="/monitoring" class="text-white hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium">المراقبة</a>
+                            <a href="/reports" class="text-white hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium">التقارير</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="hidden md:block">
+                    <div class="mr-4 flex items-center md:mr-6">
+                        <button class="bg-white p-1 rounded-full text-indigo-600 hover:text-indigo-700 focus:outline-none">
+                            <span class="sr-only">عرض الإشعارات</span>
+                            <i class="fas fa-bell"></i>
+                        </button>
+                        <div class="mr-3 relative">
+                            <div>
+                                <button class="max-w-xs bg-white rounded-full flex items-center text-sm focus:outline-none">
+                                    <img class="h-8 w-8 rounded-full" src="/static/images/default-avatar.png" alt="صورة المستخدم">
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white shadow-lg mt-8">
+        <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center">
+                <div class="text-gray-500 text-sm">
+                    {{ app_name }} v{{ version }}
+                </div>
+                <div class="flex space-x-4">
+                    <a href="/docs" class="text-indigo-600 hover:text-indigo-800 text-sm">التوثيق</a>
+                    <a href="/health" class="text-indigo-600 hover:text-indigo-800 text-sm">حالة النظام</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="fixed bottom-4 left-4 z-50"></div>
+
+    <!-- Scripts -->
+    <script>
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+            
+            toast.className = `${bgColor} text-white px-6 py-3 rounded-lg shadow-lg mb-2 transition-opacity duration-300`;
+            toast.textContent = message;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => container.removeChild(toast), 300);
+            }, 3000);
+        }
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html> 

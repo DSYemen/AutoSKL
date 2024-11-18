@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <!-- رأس الصفحة -->
+        <div class="text-center">
+            <div class="text-6xl text-red-500 mb-4">
+                <i class="fas fa-exclamation-circle"></i>
+            </div>
+            <h2 class="mt-6 text-3xl font-extrabold text-gray-900">
+                عذراً، حدث خطأ
+            </h2>
+            <p class="mt-2 text-sm text-gray-600">
+                {{ error_message }}
+            </p>
+        </div>
+
+        <!-- تفاصيل الخطأ -->
+        {% if error_details %}
+        <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">
+                    تفاصيل الخطأ
+                </h3>
+                <div class="mt-2 text-sm text-gray-500">
+                    <pre class="bg-gray-50 p-4 rounded-lg overflow-auto">{{ error_details|tojson(indent=2) }}</pre>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- أزرار الإجراءات -->
+        <div class="flex flex-col space-y-4">
+            <button onclick="window.history.back()" 
+                    class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                <i class="fas fa-arrow-left mr-2"></i>
+                العودة للصفحة السابقة
+            </button>
+            
+            <a href="/" 
+               class="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                <i class="fas fa-home mr-2"></i>
+                العودة للصفحة الرئيسية
+            </a>
+            
+            {% if support_email %}
+            <a href="mailto:{{ support_email }}" 
+               class="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                <i class="fas fa-envelope mr-2"></i>
+                الاتصال بالدعم الفني
+            </a>
+            {% endif %}
+        </div>
+
+        <!-- نصائح مفيدة -->
+        <div class="rounded-md bg-blue-50 p-4">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-info-circle text-blue-400"></i>
+                </div>
+                <div class="mr-3">
+                    <h3 class="text-sm font-medium text-blue-800">
+                        ماذا يمكنك أن تفعل؟
+                    </h3>
+                    <div class="mt-2 text-sm text-blue-700">
+                        <ul class="list-disc list-inside space-y-1">
+                            <li>تحقق من اتصالك بالإنترنت</li>
+                            <li>تأكد من صحة البيانات المدخلة</li>
+                            <li>حاول تحديث الصفحة</li>
+                            <li>جرب مرة أخرى بعد قليل</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // تتبع الأخطاء
+    window.addEventListener('error', function(e) {
+        console.error('خطأ في JavaScript:', e.error);
+        // يمكن إضافة كود لإرسال الأخطاء إلى خادم التتبع
+    });
+
+    // محاولة إعادة الاتصال تلقائياً
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 3;
+
+    function attemptReconnect() {
+        if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            setTimeout(() => {
+                window.location.reload();
+            }, 5000 * reconnectAttempts); // زيادة الوقت مع كل محاولة
+        }
+    }
+
+    // التحقق من حالة الاتصال
+    window.addEventListener('online', function() {
+        showToast('تم استعادة الاتصال', 'success');
+        attemptReconnect();
+    });
+
+    window.addEventListener('offline', function() {
+        showToast('انقطع الاتصال', 'error');
+    });
+</script>
+{% endblock %} 

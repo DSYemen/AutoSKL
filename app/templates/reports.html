@@ -1,0 +1,434 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white shadow-lg rounded-lg overflow-hidden">
+    <!-- رأس الصفحة -->
+    <div class="p-6 bg-gradient-to-r from-blue-500 to-cyan-600">
+        <div class="flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-white">تقارير النماذج</h1>
+            <div class="flex gap-4">
+                <button onclick="generateReport()"
+                        class="bg-white text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors">
+                    <i class="fas fa-file-alt mr-2"></i>
+                    تقرير جديد
+                </button>
+                <button onclick="showScheduleModal()"
+                        class="bg-white text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors">
+                    <i class="fas fa-clock mr-2"></i>
+                    جدولة التقارير
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- فلاتر البحث -->
+    <div class="p-4 border-b bg-gray-50">
+        <div class="flex flex-wrap gap-4">
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">نوع التقرير</label>
+                <select id="report-type-filter" 
+                        class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    <option value="">الكل</option>
+                    <option value="model">تقرير النموذج</option>
+                    <option value="performance">تقرير الأداء</option>
+                    <option value="monitoring">تقرير المراقبة</option>
+                </select>
+            </div>
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">النموذج</label>
+                <select id="model-filter" 
+                        class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    <option value="">الكل</option>
+                    {% for model in models %}
+                    <option value="{{ model.model_id }}">{{ model.model_id }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">التاريخ</label>
+                <input type="date" id="date-filter" 
+                       class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- قائمة التقارير -->
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        اسم التقرير
+                    </th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        النوع
+                    </th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        النموذج
+                    </th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        التاريخ
+                    </th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        الحجم
+                    </th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        الإجراءات
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for report in reports %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-medium text-gray-900">{{ report.name }}</div>
+                        <div class="text-sm text-gray-500">{{ report.description }}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full
+                                   {% if report.type == 'model' %}bg-blue-100 text-blue-800
+                                   {% elif report.type == 'performance' %}bg-green-100 text-green-800
+                                   {% else %}bg-purple-100 text-purple-800{% endif %}">
+                            {{ report.type }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">{{ report.model_id }}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">{{ report.created_at|datetime }}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">{{ report.size|filesizeformat }}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button onclick="viewReport('{{ report.id }}')"
+                                class="text-blue-600 hover:text-blue-900 mr-3">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button onclick="downloadReport('{{ report.id }}')"
+                                class="text-green-600 hover:text-green-900 mr-3">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button onclick="shareReport('{{ report.id }}')"
+                                class="text-purple-600 hover:text-purple-900 mr-3">
+                            <i class="fas fa-share-alt"></i>
+                        </button>
+                        <button onclick="deleteReport('{{ report.id }}')"
+                                class="text-red-600 hover:text-red-900">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- التصفح -->
+    <div class="px-6 py-4 bg-gray-50 border-t">
+        <div class="flex items-center justify-between">
+            <div class="text-sm text-gray-700">
+                عرض <span class="font-medium">{{ page_start }}</span> إلى 
+                <span class="font-medium">{{ page_end }}</span> من 
+                <span class="font-medium">{{ total_reports }}</span> تقرير
+            </div>
+            <div class="flex space-x-2 rtl:space-x-reverse">
+                <button onclick="changePage({{ current_page - 1 }})"
+                        {% if current_page == 1 %}disabled{% endif %}
+                        class="px-3 py-1 rounded-md bg-white border text-sm font-medium text-gray-700 
+                               hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    السابق
+                </button>
+                <button onclick="changePage({{ current_page + 1 }})"
+                        {% if current_page == total_pages %}disabled{% endif %}
+                        class="px-3 py-1 rounded-md bg-white border text-sm font-medium text-gray-700 
+                               hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    التالي
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نافذة إنشاء تقرير -->
+<div id="generate-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50">
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">إنشاء تقرير جديد</h3>
+                    <button onclick="closeGenerateModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form id="generate-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">نوع التقرير</label>
+                        <select id="report-type" required
+                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="model">تقرير النموذج</option>
+                            <option value="performance">تقرير الأداء</option>
+                            <option value="monitoring">تقرير المراقبة</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">النموذج</label>
+                        <select id="model-select" required
+                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            {% for model in models %}
+                            <option value="{{ model.model_id }}">{{ model.model_id }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">الوصف</label>
+                        <textarea id="report-description" rows="3"
+                                  class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                  placeholder="وصف اختياري للتقرير"></textarea>
+                    </div>
+                    <div class="flex justify-end gap-4 mt-6">
+                        <button type="button" onclick="closeGenerateModal()"
+                                class="px-4 py-2 text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                            إلغاء
+                        </button>
+                        <button type="submit"
+                                class="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-file-alt mr-2"></i> إنشاء
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نافذة جدولة التقارير -->
+<div id="schedule-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50">
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">جدولة التقارير</h3>
+                    <button onclick="closeScheduleModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form id="schedule-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">نوع التقرير</label>
+                        <select id="scheduled-report-type" required
+                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="model">تقرير النموذج</option>
+                            <option value="performance">تقرير الأداء</option>
+                            <option value="monitoring">تقرير المراقبة</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">تكرار التقرير</label>
+                        <select id="schedule-frequency" required
+                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="daily">يومياً</option>
+                            <option value="weekly">أسبوعياً</option>
+                            <option value="monthly">شهرياً</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">وقت التنفيذ</label>
+                        <input type="time" id="schedule-time" required
+                               class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div class="flex justify-end gap-4 mt-6">
+                        <button type="button" onclick="closeScheduleModal()"
+                                class="px-4 py-2 text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                            إلغاء
+                        </button>
+                        <button type="submit"
+                                class="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-clock mr-2"></i> جدولة
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // تحديث الفلاتر
+    function updateFilters() {
+        const reportType = document.getElementById('report-type-filter').value;
+        const modelId = document.getElementById('model-filter').value;
+        const date = document.getElementById('date-filter').value;
+        
+        window.location.href = `/reports?report_type=${reportType}&model_id=${modelId}&date=${date}`;
+    }
+    
+    // تغيير الصفحة
+    function changePage(page) {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('page', page);
+        window.location.href = `?${urlParams.toString()}`;
+    }
+    
+    // إظهار نافذة إنشاء تقرير
+    function generateReport() {
+        document.getElementById('generate-modal').classList.remove('hidden');
+    }
+    
+    // إغلاق نافذة إنشاء تقرير
+    function closeGenerateModal() {
+        document.getElementById('generate-modal').classList.add('hidden');
+        document.getElementById('generate-form').reset();
+    }
+    
+    // إظهار نافذة جدولة التقارير
+    function showScheduleModal() {
+        document.getElementById('schedule-modal').classList.remove('hidden');
+    }
+    
+    // إغلاق نافذة جدولة التقارير
+    function closeScheduleModal() {
+        document.getElementById('schedule-modal').classList.add('hidden');
+        document.getElementById('schedule-form').reset();
+    }
+    
+    // معالجة نموذج إنشاء التقرير
+    document.getElementById('generate-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const data = {
+            report_type: document.getElementById('report-type').value,
+            model_id: document.getElementById('model-select').value,
+            description: document.getElementById('report-description').value
+        };
+        
+        try {
+            const response = await fetch('/api/v1/reports/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                showToast('تم بدء إنشاء التقرير', 'success');
+                closeGenerateModal();
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                const error = await response.json();
+                showToast(error.message, 'error');
+            }
+        } catch (error) {
+            showToast('حدث خطأ أثناء إنشاء التقرير', 'error');
+        }
+    });
+    
+    // معالجة نموذج جدولة التقارير
+    document.getElementById('schedule-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const data = {
+            report_type: document.getElementById('scheduled-report-type').value,
+            frequency: document.getElementById('schedule-frequency').value,
+            time: document.getElementById('schedule-time').value
+        };
+        
+        try {
+            const response = await fetch('/api/v1/reports/schedule', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                showToast('تم جدولة التقرير بنجاح', 'success');
+                closeScheduleModal();
+            } else {
+                const error = await response.json();
+                showToast(error.message, 'error');
+            }
+        } catch (error) {
+            showToast('حدث خطأ أثناء جدولة التقرير', 'error');
+        }
+    });
+    
+    // عرض التقرير
+    async function viewReport(reportId) {
+        window.open(`/reports/${reportId}/view`, '_blank');
+    }
+    
+    // تحميل التقرير
+    async function downloadReport(reportId) {
+        try {
+            const response = await fetch(`/api/v1/reports/${reportId}/download`);
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `report_${reportId}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } else {
+                showToast('فشل تحميل التقرير', 'error');
+            }
+        } catch (error) {
+            showToast('حدث خطأ أثناء تحميل التقرير', 'error');
+        }
+    }
+    
+    // مشاركة التقرير
+    async function shareReport(reportId) {
+        try {
+            const response = await fetch(`/api/v1/reports/${reportId}/share`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                const { share_url } = await response.json();
+                // نسخ الرابط إلى الحافظة
+                await navigator.clipboard.writeText(share_url);
+                showToast('تم نسخ رابط المشاركة', 'success');
+            } else {
+                showToast('فشل مشاركة التقرير', 'error');
+            }
+        } catch (error) {
+            showToast('حدث خطأ أثناء مشاركة التقرير', 'error');
+        }
+    }
+    
+    // حذف التقرير
+    async function deleteReport(reportId) {
+        if (confirm('هل أنت متأكد من حذف هذا التقرير؟')) {
+            try {
+                const response = await fetch(`/api/v1/reports/${reportId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    showToast('تم حذف التقرير بنجاح', 'success');
+                    location.reload();
+                } else {
+                    const error = await response.json();
+                    showToast(error.message, 'error');
+                }
+            } catch (error) {
+                showToast('حدث خطأ أثناء حذف التقرير', 'error');
+            }
+        }
+    }
+    
+    // إضافة مستمعي الأحداث للفلاتر
+    document.getElementById('report-type-filter').addEventListener('change', updateFilters);
+    document.getElementById('model-filter').addEventListener('change', updateFilters);
+    document.getElementById('date-filter').addEventListener('change', updateFilters);
+</script>
+{% endblock %} 

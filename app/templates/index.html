@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white shadow-lg rounded-lg overflow-hidden">
+    <!-- Header Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-6 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+        <div class="bg-white/20 rounded-lg p-4 backdrop-blur-sm">
+            <div class="text-2xl font-bold">{{ stats.models_count }}</div>
+            <div class="text-sm opacity-80">النماذج النشطة</div>
+        </div>
+        <div class="bg-white/20 rounded-lg p-4 backdrop-blur-sm">
+            <div class="text-2xl font-bold">{{ stats.predictions_count }}</div>
+            <div class="text-sm opacity-80">التنبؤات</div>
+        </div>
+        <div class="bg-white/20 rounded-lg p-4 backdrop-blur-sm">
+            <div class="text-2xl font-bold">{{ stats.uptime|duration }}</div>
+            <div class="text-sm opacity-80">وقت التشغيل</div>
+        </div>
+        <div class="bg-white/20 rounded-lg p-4 backdrop-blur-sm">
+            <div class="text-2xl font-bold">
+                <i class="fas fa-circle {{ 'text-green-400' if stats.database_connected else 'text-red-400' }}"></i>
+            </div>
+            <div class="text-sm opacity-80">حالة النظام</div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="p-6">
+        <h2 class="text-xl font-bold mb-4">إجراءات سريعة</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <a href="/models/new" class="block p-6 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors">
+                <i class="fas fa-plus-circle text-indigo-600 text-2xl mb-2"></i>
+                <h3 class="font-bold text-indigo-900">تدريب نموذج جديد</h3>
+                <p class="text-indigo-600 text-sm">إنشاء وتدريب نموذج جديد من البيانات</p>
+            </a>
+            
+            <a href="/models/predict" class="block p-6 bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
+                <i class="fas fa-magic text-green-600 text-2xl mb-2"></i>
+                <h3 class="font-bold text-green-900">إجراء تنبؤات</h3>
+                <p class="text-green-600 text-sm">استخدام النماذج المدربة للتنبؤ</p>
+            </a>
+            
+            <a href="/monitoring" class="block p-6 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors">
+                <i class="fas fa-chart-line text-purple-600 text-2xl mb-2"></i>
+                <h3 class="font-bold text-purple-900">مراقبة الأداء</h3>
+                <p class="text-purple-600 text-sm">تتبع أداء النماذج والنظام</p>
+            </a>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="p-6 border-t">
+        <h2 class="text-xl font-bold mb-4">النشاط الأخير</h2>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">النموذج</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">النشاط</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">التوقيت</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الحالة</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for activity in recent_activity %}
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">{{ activity.model_id }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-gray-900">{{ activity.action }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-gray-500">{{ activity.timestamp|datetime }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                       {{ 'bg-green-100 text-green-800' if activity.status == 'success' else 
+                                          'bg-red-100 text-red-800' if activity.status == 'error' else 
+                                          'bg-yellow-100 text-yellow-800' }}">
+                                {{ activity.status }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %} 

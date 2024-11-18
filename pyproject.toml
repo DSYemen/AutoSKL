@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "automl-framework"
+version = "2.0.0"
+description = "إطار عمل للتعلم الآلي التلقائي"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+keywords = ["machine learning", "automl", "fastapi"]
+authors = [
+    { name = "Your Name", email = "your.email@example.com" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.1",
+    # ... باقي التبعيات من requirements.txt
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "black>=24.2.0",
+    "isort>=5.13.2",
+    "mypy>=1.8.0",
+    "flake8>=7.0.0"
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 100
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --cov=app"
+testpaths = ["tests"] 
