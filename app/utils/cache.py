@@ -1,241 +1,232 @@
-from typing import Any, Optional, Dict, List, Union, TypeVar, Protocol
-from redis.asyncio import Redis
+from typing import Dict, Any, Optional, Union
+import redis.asyncio as redis
 import json
+from datetime import datetime, timedelta
 import hashlib
-import numpy as np
-import zlib
-from datetime import timedelta, datetime
+import pickle
 from app.core.config import settings
 from app.utils.exceptions import CacheError
 import logging
 import asyncio
 from functools import wraps
-from typing_extensions import TypeAlias
 
 logger = logging.getLogger(__name__)
 
-# تعريف الأنواع المخصصة
-T = TypeVar('T')
-CacheKey: TypeAlias = str
-CacheValue: TypeAlias = Union[str, bytes, Dict[str, Any], List[Any]]
-
-class CacheBackend(Protocol):
-    """بروتوكول لخلفيات التخزين المؤقت"""
-    async def get(self, key: str) -> Optional[bytes]: ...
-    async def set(self, key: str, value: bytes, ex: Optional[int] = None) -> None: ...
-    async def delete(self, key: str) -> None: ...
-    async def exists(self, key: str) -> bool: ...
-
-class NumpyEncoder(json.JSONEncoder):
-    """مشفر JSON مخصص للتعامل مع مصفوفات NumPy"""
+class CustomJSONEncoder(json.JSONEncoder):
+    """مشفر JSON مخصص للتعامل مع التواريخ"""
     def default(self, obj: Any) -> Any:
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
         if isinstance(obj, datetime):
             return obj.isoformat()
         return super().default(obj)
 
+class CustomJSONDecoder(json.JSONDecoder):
+    """مفكك JSON مخصص للتعامل مع التواريخ"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(object_hook=self.object_hook, *args, **kwargs)
+        
+    def object_hook(self, dct: Dict[str, Any]) -> Dict[str, Any]:
+        for key, value in dct.items():
+            if isinstance(value, str):
+                try:
+                    dct[key] = datetime.fromisoformat(value)
+                except ValueError:
+                    pass
+        return dct
+
 class CacheManager:
     """مدير التخزين المؤقت"""
     def __init__(self) -> None:
-        self.redis_client: Optional[Redis] = None
-        self.local_cache: Dict[str, Dict[str, Any]] = {}
-        self.default_ttl = timedelta(seconds=settings.cache.default_ttl)
-        self.compression_threshold = 1024  # حد الضغط بالبايت
+        self.redis_client: Optional[redis.Redis] = None
+        self.local_cache: Dict[str, Any] = {}
+        self.use_local_cache = True
+        self.max_local_cache_size = settings.cache.local_cache_size
+        self.default_ttl = settings.cache.default_ttl
         self.key_prefix = settings.cache.key_prefix
         
+    async def connect(self) -> None:
+        """الاتصال بـ Redis"""
         try:
-            self.redis_client = Redis(
-                host=settings.redis.host,
-                port=settings.redis.port,
-                db=settings.redis.db,
-                password=settings.redis.password,
-                decode_responses=settings.redis.decode_responses,
-                encoding=settings.redis.encoding,
-                retry_on_timeout=settings.redis.retry_on_timeout,
-                health_check_interval=settings.redis.health_check_interval
-            )
-            logger.info("تم الاتصال بـ Redis بنجاح")
+            if not self.redis_client:
+                self.redis_client = redis.Redis(
+                    host=settings.redis.host,
+                    port=settings.redis.port,
+                    db=settings.redis.db,
+                    password=settings.redis.password,
+                    encoding=settings.redis.encoding,
+                    decode_responses=True,
+                    retry_on_timeout=True
+                )
+                logger.info("تم الاتصال بـ Redis بنجاح")
         except Exception as e:
-            logger.warning(f"فشل الاتصال بـ Redis، سيتم استخدام التخزين المؤقت المحلي: {str(e)}")
+            logger.error(f"فشل الاتصال بـ Redis: {str(e)}")
+            self.use_local_cache = True
             
     async def test_connection(self) -> bool:
         """اختبار اتصال Redis"""
         try:
+            if not self.redis_client:
+                await self.connect()
             if self.redis_client:
-                return await self.redis_client.ping()
-            return False
+                await self.redis_client.ping()
+                return True
         except Exception as e:
             logger.error(f"فشل اختبار اتصال Redis: {str(e)}")
-            return False
-
-    async def close(self) -> None:
-        """إغلاق اتصال Redis"""
+        return False
+        
+    async def get(self, key: str) -> Optional[Any]:
+        """استرجاع قيمة من التخزين المؤقت"""
         try:
-            if self.redis_client:
-                await self.redis_client.close()
-                logger.info("تم إغلاق اتصال Redis")
-        except Exception as e:
-            logger.error(f"خطأ في إغلاق اتصال Redis: {str(e)}")
-
-    async def set(self,
-                  key: CacheKey,
-                  value: CacheValue,
-                  ttl: Optional[timedelta] = None,
-                  compress: bool = True) -> None:
-        """تخزين قيمة في الذاكرة المؤقتة"""
-        try:
-            key = self._format_key(key)
-            serialized_value = self._serialize_value(value)
-            
-            if compress and len(serialized_value) > self.compression_threshold:
-                serialized_value = self._compress_data(serialized_value)
-                key = f"compressed:{key}"
-            
-            if self.redis_client and await self.test_connection():
-                await self.redis_client.set(
-                    key,
-                    serialized_value,
-                    ex=(ttl or self.default_ttl).total_seconds()
-                )
-            else:
-                self.local_cache[key] = {
-                    'value': serialized_value,
-                    'expires_at': datetime.utcnow() + (ttl or self.default_ttl)
-                }
-                
-            logger.debug(f"تم تخزين القيمة في المفتاح: {key}")
-            
-        except Exception as e:
-            logger.error(f"خطأ في تخزين القيمة: {str(e)}")
-            raise CacheError(f"فشل تخزين القيمة: {str(e)}")
-            
-    async def get(self, key: CacheKey) -> Optional[T]:
-        """استرجاع قيمة من الذاكرة المؤقتة"""
-        try:
-            key = self._format_key(key)
-            is_compressed = key.startswith("compressed:")
-            
-            if self.redis_client and await self.test_connection():
-                value = await self.redis_client.get(key)
-            else:
-                cache_item = self.local_cache.get(key)
-                if cache_item and datetime.utcnow() < cache_item['expires_at']:
-                    value = cache_item['value']
+            # محاولة استرجاع من التخزين المحلي أولاً
+            if self.use_local_cache and key in self.local_cache:
+                cache_entry = self.local_cache[key]
+                if datetime.now() < cache_entry['expiry']:
+                    return cache_entry['value']
                 else:
-                    value = None
+                    del self.local_cache[key]
                     
-            if value:
-                if is_compressed:
-                    value = self._decompress_data(value)
-                return self._deserialize_value(value)
-                
+            # محاولة استرجاع من Redis
+            if await self.test_connection():
+                full_key = f"{self.key_prefix}{key}"
+                value = await self.redis_client.get(full_key)
+                if value:
+                    return json.loads(value, cls=CustomJSONDecoder)
+                    
             return None
             
         except Exception as e:
             logger.error(f"خطأ في استرجاع القيمة: {str(e)}")
             return None
-
-    def _format_key(self, key: str) -> str:
-        """تنسيق مفتاح التخزين المؤقت"""
-        return f"{self.key_prefix}{key}"
-        
-    def _serialize_value(self, value: Any) -> str:
-        """تحويل القيمة إلى سلسلة نصية"""
-        return json.dumps(value, cls=NumpyEncoder)
-        
-    def _deserialize_value(self, value: str) -> Any:
-        """تحويل السلسلة النصية إلى قيمة"""
-        return json.loads(value)
-        
-    def _compress_data(self, data: str) -> bytes:
-        """ضغط البيانات"""
-        return zlib.compress(data.encode())
-        
-    def _decompress_data(self, data: bytes) -> str:
-        """فك ضغط البيانات"""
-        return zlib.decompress(data).decode()
-        
-    def generate_cache_key(self, data: Any) -> str:
-        """توليد مفتاح التخزين المؤقت"""
+            
+    async def set(self,
+                  key: str,
+                  value: Any,
+                  ttl: Optional[int] = None) -> bool:
+        """تخزين قيمة في التخزين المؤقت"""
         try:
-            if isinstance(data, np.ndarray):
-                data = data.tobytes()
-            elif not isinstance(data, (str, bytes)):
-                data = json.dumps(data, sort_keys=True, cls=NumpyEncoder).encode()
+            ttl = ttl or self.default_ttl
+            expiry = datetime.now() + timedelta(seconds=ttl)
+            
+            # تخزين في التخزين المحلي
+            if self.use_local_cache:
+                self.local_cache[key] = {
+                    'value': value,
+                    'expiry': expiry
+                }
+                await self._cleanup_local_cache()
                 
-            return hashlib.sha256(data).hexdigest()
+            # تخزين في Redis
+            if await self.test_connection():
+                full_key = f"{self.key_prefix}{key}"
+                serialized_value = json.dumps(value, cls=CustomJSONEncoder)
+                await self.redis_client.setex(full_key, ttl, serialized_value)
+                
+            return True
             
         except Exception as e:
-            logger.error(f"خطأ في توليد مفتاح التخزين المؤقت: {str(e)}")
-            raise CacheError(f"فشل توليد مفتاح التخزين المؤقت: {str(e)}")
+            logger.error(f"خطأ في تخزين القيمة: {str(e)}")
+            raise CacheError(f"فشل تخزين القيمة: {str(e)}")
             
-    async def delete(self, key: str) -> None:
-        """حذف قيمة من الذاكرة المؤقتة"""
+    async def delete(self, key: str) -> bool:
+        """حذف قيمة من التخزين المؤقت"""
         try:
-            key = self._format_key(key)
-            if self.redis_client and self.redis_client.ping():
-                await self.redis_client.delete(key)
-            else:
-                self.local_cache.pop(key, None)
+            # حذف من التخزين المحلي
+            if key in self.local_cache:
+                del self.local_cache[key]
                 
-            logger.debug(f"تم حذف المفتاح: {key}")
+            # حذف من Redis
+            if await self.test_connection():
+                full_key = f"{self.key_prefix}{key}"
+                await self.redis_client.delete(full_key)
+                
+            return True
             
         except Exception as e:
             logger.error(f"خطأ في حذف القيمة: {str(e)}")
-            raise CacheError(f"فشل حذف القيمة: {str(e)}")
-            
-    async def clear(self) -> None:
-        """مسح جميع القيم من الذاكرة المؤقتة"""
-        try:
-            if self.redis_client and self.redis_client.ping():
-                await self.redis_client.flushdb()
-            else:
-                self.local_cache.clear()
-                
-            logger.info("تم مسح الذاكرة المؤقتة")
-            
-        except Exception as e:
-            logger.error(f"خطأ في مسح الذاكرة المؤقتة: {str(e)}")
-            raise CacheError(f"فشل مسح الذاكرة المؤقتة: {str(e)}")
-            
-    async def exists(self, key: str) -> bool:
-        """التحقق من وجود مفتاح في الذاكرة المؤقتة"""
-        try:
-            key = self._format_key(key)
-            if self.redis_client and self.redis_client.ping():
-                return bool(await self.redis_client.exists(key))
-            else:
-                return key in self.local_cache
-                
-        except Exception as e:
-            logger.error(f"خطأ في التحقق من وجود المفتاح: {str(e)}")
             return False
+            
+    async def clear(self) -> bool:
+        """مسح كل التخزين المؤقت"""
+        try:
+            # مسح التخزين المحلي
+            self.local_cache.clear()
+            
+            # مسح Redis
+            if await self.test_connection():
+                await self.redis_client.flushdb()
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"خطأ في مسح التخزين المؤقت: {str(e)}")
+            return False
+            
+    async def generate_cache_key(self, data: Any) -> str:
+        """توليد مفتاح للتخزين المؤقت"""
+        try:
+            if isinstance(data, (dict, list)):
+                data_str = json.dumps(data, sort_keys=True)
+            else:
+                data_str = str(data)
+            return hashlib.md5(data_str.encode()).hexdigest()
+        except Exception as e:
+            logger.error(f"خطأ في توليد مفتاح التخزين المؤقت: {str(e)}")
+            return str(datetime.now().timestamp())
+            
+    async def _cleanup_local_cache(self) -> None:
+        """تنظيف التخزين المحلي"""
+        if len(self.local_cache) > self.max_local_cache_size:
+            # حذف القيم منتهية الصلاحية
+            current_time = datetime.now()
+            expired_keys = [
+                key for key, value in self.local_cache.items()
+                if value['expiry'] < current_time
+            ]
+            for key in expired_keys:
+                del self.local_cache[key]
+                
+            # حذف أقدم القيم إذا كان لا يزال كبيراً جداً
+            if len(self.local_cache) > self.max_local_cache_size:
+                sorted_items = sorted(
+                    self.local_cache.items(),
+                    key=lambda x: x[1]['expiry']
+                )
+                for key, _ in sorted_items[:len(sorted_items) - self.max_local_cache_size]:
+                    del self.local_cache[key]
+
+    async def close(self) -> None:
+        """إغلاق اتصال Redis"""
+        if self.redis_client:
+            await self.redis_client.close()
 
 cache_manager = CacheManager()
 
-def cache_decorator(ttl: Optional[timedelta] = None):
+def cache_decorator(ttl: Optional[int] = None):
     """مزخرف للتخزين المؤقت"""
     def decorator(func):
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # توليد مفتاح فريد
-            cache_key = f"{func.__name__}:{hashlib.sha256(str(args).encode()).hexdigest()}"
-            
-            # محاولة استرجاع القيمة من الذاكرة المؤقتة
-            cached_value = await cache_manager.get(cache_key)
-            if cached_value is not None:
-                return cached_value
+        async def wrapper(*args, **kwargs):
+            try:
+                # توليد مفتاح التخزين المؤقت
+                cache_key = await cache_manager.generate_cache_key({
+                    'func': func.__name__,
+                    'args': args,
+                    'kwargs': kwargs
+                })
                 
-            # تنفيذ الدالة وتخزين النتيجة
-            result = await func(*args, **kwargs)
-            await cache_manager.set(cache_key, result, ttl)
-            
-            return result
+                # محاولة استرجاع من التخزين المؤقت
+                cached_value = await cache_manager.get(cache_key)
+                if cached_value is not None:
+                    return cached_value
+                    
+                # تنفيذ الدالة وتخزين النتيجة
+                result = await func(*args, **kwargs)
+                await cache_manager.set(cache_key, result, ttl)
+                return result
+                
+            except Exception as e:
+                logger.error(f"خطأ في التخزين المؤقت: {str(e)}")
+                return await func(*args, **kwargs)
+                
         return wrapper
     return decorator
   

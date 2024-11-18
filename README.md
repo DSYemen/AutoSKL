@@ -70,6 +70,13 @@ python-magic==0.4.27
 
 python 3.12
 
+### update pip
+
+```
+pip install --upgrade pip
+```
+
+
 and Requirements.txt
 
 ```
@@ -136,6 +143,7 @@ uvloop
 orjson
 email-validator
 python-magic
+aioredis
 ```
 
 ```

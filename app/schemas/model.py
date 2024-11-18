@@ -105,12 +105,13 @@ class TrainingRequest(BaseModel):
 
 class TrainingResponse(BaseModel):
     """نموذج استجابة التدريب"""
-    model_id: str = Field(..., description="معرف النموذج")
-    task_type: TaskType = Field(..., description="نوع المهمة")
-    parameters: Dict[str, Any] = Field(..., description="معلمات النموذج")
-    evaluation_results: Dict[str, Any] = Field(..., description="نتائج التقييم")
-    training_time: float = Field(..., description="وقت التدريب بالثواني")
-    feature_importance: Optional[Dict[str, float]] = Field(None, description="أهمية الميزات")
+    model_id: str
+    task_type: str
+    target_column: str
+    feature_names: List[str]
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    evaluation_results: Dict[str, Any]
+    training_time: float = Field(default=0.0)
 
 class EvaluationRequest(BaseModel):
     """نموذج طلب التقييم"""

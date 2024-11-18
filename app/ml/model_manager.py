@@ -239,7 +239,8 @@ class ModelManager:
     async def _calculate_model_hash(self, model: ModelProtocol) -> str:
         """حساب hash للنموذج للتحقق من سلامته"""
         try:
-            model_bytes = await asyncio.to_thread(joblib.dumps, model)
+            import pickle  # استخدام pickle بدلاً من joblib.dumps
+            model_bytes = pickle.dumps(model)
             return hashlib.sha256(model_bytes).hexdigest()
         except Exception as e:
             logger.warning(f"فشل حساب hash النموذج: {str(e)}")

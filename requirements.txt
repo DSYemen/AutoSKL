@@ -55,3 +55,4 @@ uvloop
 orjson
 email-validator
 python-magic
+aioredis

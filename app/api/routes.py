@@ -32,27 +32,67 @@ from app.schemas.model import (
 logger = get_logger(__name__)
 router = APIRouter()
 
+
+class NumpyJSONEncoder(json.JSONEncoder):
+    """مشفر JSON مخصص للتعامل مع مصفوفات NumPy"""
+
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, set):
+            return list(obj)
+        return super().default(obj)
+
+
+def convert_numpy_types(obj: Any) -> Any:
+    """تحويل أنواع NumPy إلى أنواع Python الأساسية"""
+    if isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.integer, np.int64)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64)):
+        return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    return obj
+
+
 # متغير عام لتتبع تقدم التدريب
 training_progress: Dict[str, Dict[str, Any]] = {}
 
 # Prometheus متريكس
-REQUEST_LATENCY = Histogram('request_duration_seconds', 'Request duration in seconds', ['endpoint'])
-MODEL_PREDICTIONS = Counter('model_predictions_total', 'Total number of predictions', ['model_id'])
-TRAINING_DURATION = Histogram('model_training_duration_seconds', 'Model training duration in seconds', ['model_id'])
+REQUEST_LATENCY = Histogram(
+    'request_duration_seconds', 'Request duration in seconds', ['endpoint'])
+MODEL_PREDICTIONS = Counter(
+    'model_predictions_total', 'Total number of predictions', ['model_id'])
+TRAINING_DURATION = Histogram(
+    'model_training_duration_seconds', 'Model training duration in seconds', ['model_id'])
+
 
 @router.post("/data/preview")
 async def preview_data(file: UploadFile = File(...)) -> Dict[str, Any]:
     """معاينة البيانات وتحليلها"""
     try:
         content = await file.read()
-        
+
         try:
             if file.filename.endswith('.csv'):
                 # محاولة قراءة الملف بترميزات مختلفة
-                encodings = ['utf-8', 'utf-8-sig', 'latin1', 'cp1256', 'iso-8859-1']
+                encodings = ['utf-8', 'utf-8-sig',
+                             'latin1', 'cp1256', 'iso-8859-1']
                 df = None
                 last_error = None
-                
+
                 for encoding in encodings:
                     try:
                         df = pd.read_csv(
@@ -66,17 +106,18 @@ async def preview_data(file: UploadFile = File(...)) -> Dict[str, Any]:
                     except Exception as e:
                         last_error = e
                         continue
-                        
+
                 if df is None:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"فشل قراءة ملف CSV: {str(last_error)}"
                     )
-                    
+
             elif file.filename.endswith(('.xlsx', '.xls')):
                 df = pd.read_excel(
                     io.BytesIO(content),
-                    engine='openpyxl' if file.filename.endswith('.xlsx') else 'xlrd',
+                    engine='openpyxl' if file.filename.endswith(
+                        '.xlsx') else 'xlrd',
                     nrows=5
                 )
             else:
@@ -84,7 +125,7 @@ async def preview_data(file: UploadFile = File(...)) -> Dict[str, Any]:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="نوع الملف غير مدعوم. الأنواع المدعومة هي: CSV, Excel"
                 )
-                
+
             # تحليل البيانات
             analysis = {
                 'columns': df.columns.tolist(),
@@ -94,16 +135,16 @@ async def preview_data(file: UploadFile = File(...)) -> Dict[str, Any]:
                 'sample_data': df.head().to_dict(orient='records'),
                 'missing_values': df.isnull().sum().to_dict()
             }
-            
+
             return analysis
-            
+
         except Exception as e:
             logger.error(f"خطأ في قراءة الملف: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"فشل قراءة الملف: {str(e)}"
             )
-            
+
     except Exception as e:
         logger.error(f"خطأ في معاينة البيانات: {str(e)}")
         raise HTTPException(
@@ -111,7 +152,8 @@ async def preview_data(file: UploadFile = File(...)) -> Dict[str, Any]:
             detail=str(e)
         )
 
-@router.post("/models/train", 
+
+@router.post("/models/train",
              response_model=TrainingResponse,
              status_code=status.HTTP_201_CREATED)
 @with_logging_context({'operation': 'train_model'})
@@ -126,33 +168,37 @@ async def train_model(
 ) -> TrainingResponse:
     """تدريب نموذج جديد"""
     try:
-        logger.info(f"بدء طلب تدريب نموذج جديد: task_type={task_type}, target_column={target_column}")
-        
+        logger.info(f"بدء طلب تدريب نموذج جديد: task_type={
+                    task_type}, target_column={target_column}")
+
         # قراءة البيانات
         content = await file.read()
         df = None
-        
+
         try:
             if file.filename.endswith('.csv'):
                 # محاولة قراءة الملف بترميزات مختلفة
-                encodings = ['utf-8', 'utf-8-sig', 'latin1', 'cp1256', 'iso-8859-1']
+                encodings = ['utf-8', 'utf-8-sig',
+                             'latin1', 'cp1256', 'iso-8859-1']
                 last_error = None
-                
+
                 for encoding in encodings:
                     try:
-                        df = pd.read_csv(io.BytesIO(content), encoding=encoding)
-                        logger.info(f"تم قراءة الملف CSV باستخدام الترميز: {encoding}")
+                        df = pd.read_csv(io.BytesIO(content),
+                                         encoding=encoding)
+                        logger.info(
+                            f"تم قراءة الملف CSV باستخدام الترميز: {encoding}")
                         break
                     except Exception as e:
                         last_error = e
                         continue
-                        
+
                 if df is None:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"فشل قراءة ملف CSV: {str(last_error)}"
                     )
-                    
+
             elif file.filename.endswith(('.xlsx', '.xls')):
                 df = pd.read_excel(io.BytesIO(content))
                 logger.info("تم قراءة ملف Excel بنجاح")
@@ -178,12 +224,14 @@ async def train_model(
         if target_column not in df.columns:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"عمود الهدف '{target_column}' غير موجود. الأعمدة المتوفرة: {', '.join(df.columns.tolist())}"
+                detail=f"عمود الهدف '{target_column}' غير موجود. الأعمدة المتوفرة: {
+                    ', '.join(df.columns.tolist())}"
             )
 
         # إنشاء معرف النموذج إذا لم يكن موجوداً
         if not model_id:
-            model_id = f"{task_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            model_id = f"{task_type}_{
+                datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         # تحديث حالة التقدم
         training_progress[model_id] = {
@@ -208,6 +256,9 @@ async def train_model(
                 model, X, y, task_type, df.columns.tolist()
             )
             training_progress[model_id]['progress'] = 80
+
+            # تحويل نتائج التقييم
+            evaluation_results = convert_numpy_types(evaluation_results)
 
             # حفظ النموذج
             training_progress[model_id]['status'] = 'جاري حفظ النموذج...'
@@ -240,7 +291,8 @@ async def train_model(
         except Exception as e:
             logger.error(f"خطأ في تدريب النموذج: {str(e)}")
             if model_id in training_progress:
-                training_progress[model_id]['status'] = f'فشل التدريب: {str(e)}'
+                training_progress[model_id]['status'] = f'فشل التدريب: {
+                    str(e)}'
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(e)
@@ -255,6 +307,7 @@ async def train_model(
             detail=f"حدث خطأ غير متوقع: {str(e)}"
         )
 
+
 @router.get("/training-progress/{model_id}")
 async def get_training_progress(model_id: str):
     """الحصول على تقدم التدريب"""
@@ -264,6 +317,7 @@ async def get_training_progress(model_id: str):
             detail="معرف النموذج غير موجود"
         )
     return EventSourceResponse(progress_generator(model_id))
+
 
 async def progress_generator(model_id: str):
     """مولد تحديثات التقدم"""
@@ -276,6 +330,7 @@ async def progress_generator(model_id: str):
             if training_progress[model_id]['progress'] == 100 or 'error' in training_progress[model_id]['status']:
                 break
         await asyncio.sleep(1)
+
 
 @router.post("/models/{model_id}/predict", response_model=PredictionResponse)
 @with_logging_context({'operation': 'predict'})
@@ -318,6 +373,7 @@ async def predict(
             detail=str(e)
         )
 
+
 @router.get("/models/{model_id}/info", response_model=ModelInfo)
 @cache_decorator(ttl=300)  # تخزين مؤقت لمدة 5 دقائق
 async def get_model_info(
@@ -340,6 +396,7 @@ async def get_model_info(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
 
 @router.post("/models/{model_id}/evaluate", response_model=EvaluationResponse)
 async def evaluate_model(
@@ -366,6 +423,7 @@ async def evaluate_model(
             detail=str(e)
         )
 
+
 @router.get("/models/{model_id}/monitoring", response_model=MonitoringMetrics)
 async def get_monitoring_metrics(
     model_id: str,
@@ -388,6 +446,7 @@ async def get_monitoring_metrics(
             detail=str(e)
         )
 
+
 @router.post("/models/{model_id}/update", response_model=ModelUpdate)
 async def update_model(
     model_id: str,
@@ -401,6 +460,227 @@ async def update_model(
 
     except Exception as e:
         logger.error(f"خطأ في تحديث النموذج: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+        logger.error(f"خطأ في تحديث النموذج: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/models/{model_id}/report")
+async def generate_model_report(
+    model_id: str,
+    session: AsyncSession = Depends(get_db)
+) -> StreamingResponse:
+    """توليد تقرير النموذج"""
+    try:
+        # الحصول على معلومات النموذج
+        model_info = await model_manager.get_model_info(model_id)
+        if not model_info:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"النموذج {model_id} غير موجود"
+            )
+
+        # توليد التقرير
+        report_path = await report_generator.generate_model_report(
+            model_id=model_id,
+            model_info=model_info,
+            evaluation_results=model_info.get('evaluation_results', {}),
+            feature_importance=model_info.get('feature_importance', {})
+        )
+
+        # إرجاع التقرير كملف للتحميل
+        return StreamingResponse(
+            open(report_path, 'rb'),
+            media_type='application/pdf',
+            headers={
+                'Content-Disposition': f'attachment; filename="model_{model_id}_report.pdf"'
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"خطأ في توليد تقرير النموذج: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/models/list")
+async def list_models(
+    session: AsyncSession = Depends(get_db),
+    status: Optional[str] = Query(None),
+    task_type: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query('creation_date'),
+    order: Optional[str] = Query('desc')
+) -> List[ModelInfo]:
+    """الحصول على قائمة النماذج مع خيارات التصفية والترتيب"""
+    try:
+        models = await model_manager.list_models()
+        
+        # تطبيق التصفية
+        if status:
+            models = [m for m in models if m.status == status]
+        if task_type:
+            models = [m for m in models if m.task_type == task_type]
+            
+        # تطبيق الترتيب
+        reverse = order.lower() == 'desc'
+        models.sort(key=lambda x: getattr(x, sort_by), reverse=reverse)
+        
+        return models
+
+    except Exception as e:
+        logger.error(f"خطأ في الحصول على قائمة النماذج: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.delete("/models/{model_id}")
+async def delete_model(
+    model_id: str,
+    session: AsyncSession = Depends(get_db)
+) -> Dict[str, str]:
+    """حذف النموذج"""
+    try:
+        await model_manager.delete_model(model_id)
+        return {"message": f"تم حذف النموذج {model_id} بنجاح"}
+
+    except Exception as e:
+        logger.error(f"خطأ في حذف النموذج: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/models/{model_id}/download")
+async def download_model(model_id: str) -> StreamingResponse:
+    """تحميل النموذج"""
+    try:
+        model_path = await model_manager.export_model(model_id)
+        if not model_path:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"النموذج {model_id} غير موجود"
+            )
+            
+        return StreamingResponse(
+            open(model_path, 'rb'),
+            media_type='application/octet-stream',
+            headers={
+                'Content-Disposition': f'attachment; filename="{model_id}.joblib"'
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"خطأ في تحميل النموذج: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.post("/models/import")
+async def import_model(
+    file: UploadFile = File(...),
+    new_model_id: Optional[str] = Form(None)
+) -> Dict[str, str]:
+    """استيراد نموذج"""
+    try:
+        # حفظ الملف مؤقتاً
+        temp_path = f"temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.joblib"
+        with open(temp_path, 'wb') as f:
+            content = await file.read()
+            f.write(content)
+            
+        try:
+            # استيراد النموذج
+            model_id = await model_manager.import_model(temp_path, new_model_id)
+            return {"message": f"تم استيراد النموذج بنجاح: {model_id}"}
+            
+        finally:
+            # تنظيف الملف المؤقت
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    except Exception as e:
+        logger.error(f"خطأ في استيراد النموذج: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/models/{model_id}/metrics")
+@cache_decorator(ttl=300)  # تخزين مؤقت لمدة 5 دقائق
+async def get_model_metrics(model_id: str) -> Dict[str, Any]:
+    """الحصول على مقاييس النموذج"""
+    try:
+        metrics = await model_manager.get_model_metrics(model_id)
+        if not metrics:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"لا توجد مقاييس متاحة للنموذج {model_id}"
+            )
+        return metrics
+
+    except Exception as e:
+        logger.error(f"خطأ في الحصول على مقاييس النموذج: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/models/{model_id}/dependencies")
+async def get_model_dependencies(model_id: str) -> Dict[str, Any]:
+    """الحصول على تبعيات النموذج"""
+    try:
+        dependencies = await model_manager.get_model_dependencies(model_id)
+        if not dependencies:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"لا توجد معلومات تبعيات للنموذج {model_id}"
+            )
+        return dependencies
+
+    except Exception as e:
+        logger.error(f"خطأ في الحصول على تبعيات النموذج: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/models/{model_id}/performance-history")
+async def get_model_performance_history(model_id: str) -> List[Dict[str, Any]]:
+    """الحصول على تاريخ أداء النموذج"""
+    try:
+        history = await model_manager.get_model_performance_history(model_id)
+        return history
+
+    except Exception as e:
+        logger.error(f"خطأ في الحصول على تاريخ الأداء: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.post("/models/{model_id}/stop-training")
+async def stop_model_training(model_id: str) -> Dict[str, str]:
+    """إيقاف تدريب النموذج"""
+    try:
+        if model_id not in training_progress:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"لا يوجد تدريب جارٍ للنموذج {model_id}"
+            )
+            
+        training_progress[model_id]['status'] = 'تم إيقاف التدريب'
+        return {"message": f"تم إيقاف تدريب النموذج {model_id}"}
+
+    except Exception as e:
+        logger.error(f"خطأ في إيقاف تدريب النموذج: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
