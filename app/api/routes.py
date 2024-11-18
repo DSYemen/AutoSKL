@@ -488,22 +488,34 @@ async def train_model(
         # تحديث حالة التقدم
         training_progress[model_id] = {
             'progress': 0,
-            'status': 'جاري تحميل البيانات...'
+            'status': 'جاري تحميل البيانات...',
+            'metrics': {},  # إضافة قاموس metrics فارغ
+            'current_step': 'loading'  # إضافة خطوة التدريب الحالية
         }
 
         try:
             # معالجة البيانات
-            training_progress[model_id]['status'] = 'جاري معالجة البيانات...'
+            training_progress[model_id].update({
+                'status': 'جاري معالجة البيانات...',
+                'progress': 20,
+                'current_step': 'processing'
+            })
             X, y = await data_processor.process_data(df, target_column, task_type)
-            training_progress[model_id]['progress'] = 20
 
             # اختيار وتدريب النموذج
-            training_progress[model_id]['status'] = 'جاري تدريب النموذج...'
+            training_progress[model_id].update({
+                'status': 'جاري تدريب النموذج...',
+                'progress': 60,
+                'current_step': 'training'
+            })
             model, params = await model_selector.select_best_model(X, y, task_type)
-            training_progress[model_id]['progress'] = 60
 
             # تقييم النموذج
-            training_progress[model_id]['status'] = 'جاري تقييم النموذج...'
+            training_progress[model_id].update({
+                'status': 'جاري تقييم النموذج...',
+                'progress': 80,
+                'current_step': 'evaluating'
+            })
             evaluation_results = await model_evaluator.evaluate_model(
                 model=model,
                 X=X,
@@ -511,13 +523,19 @@ async def train_model(
                 task_type=task_type,
                 feature_names=df.columns.tolist()
             )
-            training_progress[model_id]['progress'] = 80
 
             # تحويل النتائج إلى أنواع بيانات قابلة للتحويل إلى JSON
             evaluation_results = convert_numpy_types(evaluation_results)
+            
+            # تحديث المقاييس في حالة التقدم
+            training_progress[model_id]['metrics'] = evaluation_results.get('metrics', {})
 
             # حفظ النموذج
-            training_progress[model_id]['status'] = 'جاري حفظ النموذج...'
+            training_progress[model_id].update({
+                'status': 'جاري حفظ النموذج...',
+                'progress': 90,
+                'current_step': 'saving'
+            })
             await model_manager.save_model(
                 model=model,
                 model_id=model_id,
@@ -531,8 +549,13 @@ async def train_model(
                     'creation_date': datetime.now().isoformat()
                 }
             )
-            training_progress[model_id]['progress'] = 100
-            training_progress[model_id]['status'] = 'اكتمل التدريب'
+
+            # تحديث حالة الاكتمال
+            training_progress[model_id].update({
+                'status': 'اكتمل التدريب',
+                'progress': 100,
+                'current_step': 'completed'
+            })
 
             # حساب وقت التدريب
             training_time = (datetime.now() - training_start_time).total_seconds()
@@ -546,7 +569,8 @@ async def train_model(
                 feature_names=df.columns.tolist(),
                 parameters=params,
                 evaluation_results=evaluation_results,
-                training_time=training_time
+                training_time=training_time,
+                metrics=evaluation_results.get('metrics', {})  # إضافة المقاييس للاستجابة
             )
 
             return response
@@ -554,7 +578,11 @@ async def train_model(
         except Exception as e:
             logger.error(f"خطأ في تدريب النموذج: {str(e)}")
             if model_id in training_progress:
-                training_progress[model_id]['status'] = f'فشل التدريب: {str(e)}'
+                training_progress[model_id].update({
+                    'status': f'فشل التدريب: {str(e)}',
+                    'error': str(e),
+                    'current_step': 'failed'
+                })
             TRAINING_ERRORS.labels(error_type=type(e).__name__).inc()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -585,12 +613,58 @@ async def progress_generator(model_id: str):
     """مولد تحديثات التقدم"""
     while True:
         if model_id in training_progress:
-            yield {
-                "event": "message",
-                "data": json.dumps(training_progress[model_id], cls=NumpyJSONEncoder)
+            # إنشاء نسخة من البيانات مع القيم الافتراضية
+            progress_data = {
+                'progress': 0,
+                'status': '',
+                'metrics': {
+                    'accuracy': 0,
+                    'precision': 0,
+                    'recall': 0,
+                    'f1': 0,
+                    'additional_metrics': {}
+                },
+                'current_step': '',
+                'error': None,
+                'evaluation_results': {
+                    'metrics': {},
+                    'feature_importance': {},
+                    'confusion_matrix': None,
+                    'additional_info': {}
+                }
             }
-            if training_progress[model_id]['progress'] == 100 or 'error' in training_progress[model_id]['status']:
+            
+            # تحديث البيانات من training_progress
+            current_progress = training_progress[model_id]
+            progress_data.update(current_progress)
+            
+            # التأكد من وجود المقاييس وتحديثها
+            if current_progress.get('evaluation_results'):
+                progress_data['metrics'] = current_progress['evaluation_results'].get('metrics', {})
+                progress_data['evaluation_results'] = current_progress['evaluation_results']
+            
+            # تحويل البيانات إلى JSON
+            try:
+                json_data = json.dumps(progress_data, cls=NumpyJSONEncoder)
+                yield {
+                    "event": "message",
+                    "data": json_data
+                }
+            except Exception as e:
+                logger.error(f"خطأ في تحويل البيانات إلى JSON: {str(e)}")
+                yield {
+                    "event": "message",
+                    "data": json.dumps({
+                        'progress': progress_data['progress'],
+                        'status': progress_data['status'],
+                        'metrics': {},
+                        'error': str(e)
+                    })
+                }
+            
+            if progress_data['progress'] == 100 or 'error' in progress_data.get('status', ''):
                 break
+                
         await asyncio.sleep(1)
 
 @router.post("/models/{model_id}/stop-training")

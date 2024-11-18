@@ -196,4 +196,35 @@ class ReportGenerator:
         
         return fig
 
+    async def get_model_reports(self, model_id: str) -> List[Dict[str, Any]]:
+        """الحصول على تقارير النموذج"""
+        try:
+            reports_path = self.output_dir / model_id
+            if not reports_path.exists():
+                return []
+            
+            reports = []
+            for report_file in reports_path.glob("*.pdf"):
+                try:
+                    stat = report_file.stat()
+                    creation_time = datetime.fromtimestamp(stat.st_mtime)
+                    report_info = {
+                        'file_name': report_file.name,
+                        'creation_date': creation_time.isoformat(),  # تحويل التاريخ إلى نص
+                        'size': stat.st_size,
+                        'type': report_file.suffix[1:],
+                        'path': str(report_file)
+                    }
+                    reports.append(report_info)
+                except Exception as e:
+                    logger.warning(f"خطأ في معالجة ملف التقرير {report_file}: {str(e)}")
+                    continue
+            
+            # ترتيب التقارير حسب تاريخ الإنشاء (كنص)
+            return sorted(reports, key=lambda x: x['creation_date'], reverse=True)
+        
+        except Exception as e:
+            logger.error(f"خطأ في جلب تقارير النموذج {model_id}: {str(e)}")
+            return []
+
 report_generator = ReportGenerator() 

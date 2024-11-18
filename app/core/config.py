@@ -123,6 +123,16 @@ class ModelSelectionSettings(BaseSettings):
         "regression": "neg_mean_squared_error",
         "clustering": "silhouette"
     }
+    early_stopping: Dict[str, Any] = {
+        "enabled": True,
+        "patience": 10,
+        "min_delta": 0.001
+    }
+    pruning: Dict[str, Any] = {
+        "enabled": True,
+        "n_startup_trials": 5,
+        "n_warmup_steps": 10
+    }
     
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,6 +1,7 @@
 from typing import Dict, Any, Optional, Union
 import redis.asyncio as redis
 import json
+from json.decoder import JSONDecodeError
 from datetime import datetime, timedelta
 import hashlib
 import pickle
@@ -11,8 +12,23 @@ import asyncio
 from functools import wraps
 import threading
 from collections import OrderedDict
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+class CustomJSONEncoder(json.JSONEncoder):
+    """مشفر JSON مخصص للتعامل مع الأنواع المختلفة"""
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, BaseModel):
+            return obj.model_dump()
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, bytes):
+            return obj.decode('utf-8')
+        try:
+            return super().default(obj)
+        except TypeError:
+            return str(obj)
 
 class LocalCache:
     """تخزين مؤقت محلي باستخدام OrderedDict"""
@@ -76,6 +92,7 @@ class CacheManager:
         self.use_redis = True
         self.default_ttl = settings.cache.default_ttl
         self.key_prefix = settings.cache.key_prefix
+        self.json_encoder = CustomJSONEncoder
 
     async def connect(self) -> None:
         """الاتصال بـ Redis"""
@@ -126,7 +143,7 @@ class CacheManager:
                         # تخزين في التخزين المحلي
                         self.local_cache.set(key, decoded_value, self.default_ttl)
                         return decoded_value
-                    except json.JSONDecodeError:
+                    except JSONDecodeError:
                         return value
 
             return None
@@ -147,11 +164,21 @@ class CacheManager:
             if self.use_redis and await self.test_connection():
                 full_key = f"{self.key_prefix}{key}"
                 try:
-                    serialized_value = json.dumps(value)
+                    # استخدام المشفر المخصص
+                    serialized_value = json.dumps(value, cls=self.json_encoder)
                     await self.redis_client.setex(full_key, ttl, serialized_value)
-                except (TypeError, json.JSONEncodeError) as e:
+                except Exception as e:
                     logger.warning(f"فشل تحويل القيمة إلى JSON: {str(e)}")
-                    await self.redis_client.setex(full_key, ttl, str(value))
+                    # محاولة تخزين القيمة كنص
+                    try:
+                        if isinstance(value, BaseModel):
+                            string_value = json.dumps(value.model_dump(), cls=self.json_encoder)
+                        else:
+                            string_value = str(value)
+                        await self.redis_client.setex(full_key, ttl, string_value)
+                    except Exception as e2:
+                        logger.error(f"فشل تخزين القيمة كنص: {str(e2)}")
+                        return False
 
             return True
 

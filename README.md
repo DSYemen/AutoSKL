@@ -234,3 +234,26 @@ python-magic==0.4.27
 # Brotli==1.1.0   # لضغط HTTP
 
 ```
+
+## Redis
+
+```
+sudo apt-get install redis-server
+```
+Enable Redis Service
+
+```
+# on Lunix
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+
+# into Container
+sudo service enable redis-server
+sudo service start redis-server
+```
+
+## Install package python redis
+
+```
+pip install redis
+```

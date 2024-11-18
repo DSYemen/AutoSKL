@@ -258,20 +258,39 @@ class ModelManager:
                 self.model_cache.pop(model_id)
                 logger.debug(f"تم إزالة النموذج {model_id} من الذاكرة المؤقتة")
 
-    async def get_model_info(self, model_id: str) -> Optional[ModelInfo]:
+    async def get_model_info(self, model_id: str) -> Optional[Dict[str, Any]]:
         """الحصول على معلومات النموذج"""
         try:
+            model_path = self.models_dir / f"{model_id}.joblib"
             metadata_path = self.models_dir / f"{model_id}_metadata.json"
-            if not metadata_path.exists():
+            
+            if not model_path.exists() or not metadata_path.exists():
                 return None
-                
+            
+            # قراءة البيانات الوصفية
             async with aiofiles.open(metadata_path, 'r', encoding='utf-8') as f:
                 metadata = json.loads(await f.read())
-                
-            return metadata
+            
+            # إضافة معلومات إضافية
+            model_info = {
+                'model_id': model_id,
+                'status': metadata.get('status', 'unknown'),
+                'creation_date': metadata.get('creation_date'),
+                'last_updated': metadata.get('last_updated'),
+                'task_type': metadata.get('task_type'),
+                'target_column': metadata.get('target_column'),
+                'feature_names': metadata.get('feature_names', []),
+                'evaluation_results': metadata.get('evaluation_results', {
+                    'metrics': {},
+                    'feature_importance': {}
+                }),
+                'metadata': metadata
+            }
+            
+            return model_info
             
         except Exception as e:
-            logger.error(f"خطأ في الحصول على معلومات النموذج: {str(e)}")
+            logger.error(f"خطأ في الحصول على معلومات النموذج {model_id}: {str(e)}")
             return None
             
     async def list_models(self) -> List[str]:

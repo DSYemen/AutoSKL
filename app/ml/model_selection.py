@@ -144,13 +144,17 @@ class ModelSelector:
             })
             
             # التوقف المبكر إذا تم تمكينه
-            if settings.ml.model_selection.early_stopping.enabled:
-                last_n_trials = study.trials[-settings.ml.model_selection.early_stopping.patience:]
-                if len(last_n_trials) == settings.ml.model_selection.early_stopping.patience:
+            early_stopping_config = settings.ml.model_selection.early_stopping
+            if early_stopping_config.get('enabled', True):
+                patience = early_stopping_config.get('patience', 10)
+                min_delta = early_stopping_config.get('min_delta', 0.001)
+                
+                last_n_trials = study.trials[-patience:]
+                if len(last_n_trials) == patience:
                     values = [t.value for t in last_n_trials if t.value is not None]
                     if len(values) > 0:
                         best_value = max(values)
-                        if all(abs(v - best_value) < settings.ml.model_selection.early_stopping.min_delta for v in values):
+                        if all(abs(v - best_value) < min_delta for v in values):
                             study.stop()
                             
         except Exception as e:

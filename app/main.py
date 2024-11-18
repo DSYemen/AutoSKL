@@ -22,6 +22,10 @@ from app.core.events import create_start_app_handler, create_stop_app_handler
 from app.api.routes import router
 from app.db.database import db_manager
 from app.utils.exceptions import MLFrameworkError, format_error_response
+from app.ml.model_manager import model_manager
+from app.ml.monitoring import model_monitor
+from app.ml.prediction import prediction_service
+from app.reporting.report_generator import report_generator
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +34,10 @@ T = TypeVar('T')
 HealthStatus: TypeAlias = Dict[str, Any]
 SystemStats: TypeAlias = Dict[str, Any]
 
+
 class RequestMetricsMiddleware(BaseHTTPMiddleware):
     """وسيط لقياس أداء الطلبات"""
+
     def __init__(self, app: FastAPI):
         super().__init__(app)
         self.REQUEST_LATENCY = Histogram(
@@ -64,6 +70,7 @@ class RequestMetricsMiddleware(BaseHTTPMiddleware):
                     status=response.status_code
                 ).inc()
 
+
 def create_app() -> FastAPI:
     """إنشاء تطبيق FastAPI"""
     app = FastAPI(
@@ -78,11 +85,11 @@ def create_app() -> FastAPI:
             {"name": "Reports", "description": "إدارة التقارير"}
         ]
     )
-    
+
     # إضافة معالجات الأحداث
     app.add_event_handler("startup", create_start_app_handler(app))
     app.add_event_handler("shutdown", create_stop_app_handler(app))
-    
+
     # إعداد الوسطاء
     app.add_middleware(RequestMetricsMiddleware)
     app.add_middleware(
@@ -94,7 +101,7 @@ def create_app() -> FastAPI:
         expose_headers=["*"],
         max_age=3600
     )
-    
+
     app.add_middleware(
         GZipMiddleware,
         minimum_size=1000,
@@ -104,25 +111,25 @@ def create_app() -> FastAPI:
         TrustedHostMiddleware,
         allowed_hosts=settings.app.allowed_hosts
     )
-    
+
     # إنشاء المجلدات المطلوبة
     static_dir = Path("static")
     static_dir.mkdir(exist_ok=True)
     for subdir in ['css', 'js', 'images', 'fonts']:
         (static_dir / subdir).mkdir(exist_ok=True)
-    
+
     # تثبيت الملفات الثابتة
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-    
+
     # إعداد القوالب
     templates = Jinja2Templates(directory="app/templates")
     app.state.templates = templates
-    
+
     # إضافة فلاتر Jinja2 مخصصة
     templates.env.filters["datetime"] = format_datetime
     templates.env.filters["number"] = format_number
     templates.env.filters["duration"] = format_duration
-    
+
     @app.get("/", response_model=Dict[str, Any])
     async def index(request: Request) -> Any:
         """الصفحة الرئيسية"""
@@ -147,7 +154,7 @@ def create_app() -> FastAPI:
                 },
                 status_code=500
             )
-    
+
     @app.get("/health", response_model=HealthStatus)
     async def health_check() -> HealthStatus:
         """فحص صحة النظام"""
@@ -169,10 +176,10 @@ def create_app() -> FastAPI:
                     'timestamp': datetime.utcnow().isoformat()
                 }
             )
-    
+
     # إضافة مسارات API
     app.include_router(router, prefix="/api/v1")
-    
+
     # معالج الأخطاء العام
     @app.exception_handler(MLFrameworkError)
     async def ml_framework_exception_handler(request: Request, exc: MLFrameworkError) -> JSONResponse:
@@ -180,7 +187,7 @@ def create_app() -> FastAPI:
             status_code=500,
             content=format_error_response(exc)
         )
-    
+
     @app.get("/models/new", response_model=Dict[str, Any])
     async def new_model_page(request: Request) -> Any:
         """صفحة تدريب نموذج جديد"""
@@ -234,7 +241,7 @@ def create_app() -> FastAPI:
                     },
                     status_code=404
                 )
-            
+
             return templates.TemplateResponse(
                 "model_details.html",
                 {
@@ -259,14 +266,23 @@ def create_app() -> FastAPI:
     async def models_page(request: Request) -> Any:
         """صفحة قائمة النماذج"""
         try:
-            models = await db_manager.get_all_models()
+            # استخدام model_manager.list_models() بدلاً من db_manager.get_all_models()
+            models = await model_manager.list_models()
+
+            # جمع معلومات تفصيلية لكل نموذج
+            models_info = []
+            for model_id in models:
+                model_info = await model_manager.get_model_info(model_id)
+                if model_info:
+                    models_info.append(model_info)
+
             return templates.TemplateResponse(
                 "models.html",
                 {
                     "request": request,
                     "app_name": settings.app.name,
                     "version": settings.app.version,
-                    "models": models
+                    "models": models_info
                 }
             )
         except Exception as e:
@@ -284,13 +300,40 @@ def create_app() -> FastAPI:
     async def monitoring_page(request: Request) -> Any:
         """صفحة المراقبة"""
         try:
+            # جمع إحصائيات النظام
+            system_stats = await get_system_stats(app)
+
+            # جمع إحصائيات المراقبة
+            monitoring_stats = {
+                'models': [],  # سيتم ملؤها بالبيانات
+                'system_health': system_stats,
+                'alerts': []  # سيتم ملؤها بالتنبيهات
+            }
+
+            # الحصول على قائمة النماذج
+            models = await model_manager.list_models()
+            for model_id in models:
+                try:
+                    model_metrics = await model_monitor.get_monitoring_summary(model_id)
+                    if model_metrics:
+                        monitoring_stats['models'].append({
+                            'model_id': model_id,
+                            'metrics': model_metrics
+                        })
+                except Exception as e:
+                    logger.error(f"خطأ في جلب مقاييس المراقبة للنموذج {
+                                 model_id}: {str(e)}")
+
             return templates.TemplateResponse(
                 "monitoring.html",
                 {
                     "request": request,
                     "app_name": settings.app.name,
                     "version": settings.app.version,
-                    "monitoring_config": settings.ml.monitoring
+                    "monitoring_config": settings.ml.monitoring,
+                    "monitoring_stats": monitoring_stats,
+                    "system_stats": system_stats,
+                    "stats": system_stats
                 }
             )
         except Exception as e:
@@ -308,13 +351,35 @@ def create_app() -> FastAPI:
     async def reports_page(request: Request) -> Any:
         """صفحة التقارير"""
         try:
+            # جمع معلومات التقارير
+            reports_info = {
+                'models': [],
+                'system_reports': []
+            }
+
+            # الحصول على قائمة النماذج وتقاريرها
+            models = await model_manager.list_models()
+            for model_id in models:
+                try:
+                    model_info = await model_manager.get_model_info(model_id)
+                    if model_info:
+                        reports_info['models'].append({
+                            'model_id': model_id,
+                            'info': model_info,
+                            'reports': await report_generator.get_model_reports(model_id)
+                        })
+                except Exception as e:
+                    logger.error(f"خطأ في جلب تقارير النموذج {
+                                 model_id}: {str(e)}")
+
             return templates.TemplateResponse(
                 "reports.html",
                 {
                     "request": request,
                     "app_name": settings.app.name,
                     "version": settings.app.version,
-                    "reporting_config": settings.reporting
+                    "reports_info": reports_info,
+                    "current_page": "reports"
                 }
             )
         except Exception as e:
@@ -327,8 +392,46 @@ def create_app() -> FastAPI:
                 },
                 status_code=500
             )
-    
+
+    @app.get("/predict", response_model=Dict[str, Any])
+    async def predict_page(request: Request) -> Any:
+        """صفحة التنبؤ"""
+        try:
+            # الحصول على قائمة النماذج المتاحة
+            models = await model_manager.list_models()
+            models_info = []
+
+            for model_id in models:
+                try:
+                    model_info = await model_manager.get_model_info(model_id)
+                    if model_info and model_info.get('status') == 'active':
+                        models_info.append(model_info)
+                except Exception as e:
+                    logger.error(f"خطأ في جلب معلومات النموذج {
+                                 model_id}: {str(e)}")
+
+            return templates.TemplateResponse(
+                "predict.html",
+                {
+                    "request": request,
+                    "app_name": settings.app.name,
+                    "version": settings.app.version,
+                    "models": models_info
+                }
+            )
+        except Exception as e:
+            logger.error(f"خطأ في صفحة التنبؤ: {str(e)}")
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_message": "حدث خطأ في تحميل صفحة التنبؤ"
+                },
+                status_code=500
+            )
+
     return app
+
 
 async def get_system_stats(app: FastAPI) -> SystemStats:
     """جمع إحصائيات النظام"""
@@ -338,25 +441,28 @@ async def get_system_stats(app: FastAPI) -> SystemStats:
         'predictions_count': 0,
         'uptime': get_uptime(app)
     }
-    
+
     try:
         stats['database_connected'] = await db_manager.check_connection()
         if stats['database_connected']:
             db_stats = await db_manager.get_table_stats()
-            stats.update({
-                'models_count': len(db_stats.get('models', [])),
-                'predictions_count': len(db_stats.get('predictions', []))
-            })
+            if isinstance(db_stats, dict):  # التحقق من أن db_stats هو قاموس
+                stats.update({
+                    'models_count': len(db_stats.get('models', [])) if isinstance(db_stats.get('models'), list) else 0,
+                    'predictions_count': len(db_stats.get('predictions', [])) if isinstance(db_stats.get('predictions'), list) else 0
+                })
     except Exception as e:
         logger.warning(f"فشل جلب إحصائيات النظام: {str(e)}")
-        
+
     return stats
+
 
 def get_uptime(app: FastAPI) -> float:
     """حساب وقت تشغيل التطبيق"""
     if hasattr(app.state, 'start_time'):
         return (datetime.utcnow() - app.state.start_time).total_seconds()
     return 0.0
+
 
 def format_datetime(value: Union[str, datetime]) -> str:
     """تنسيق التاريخ والوقت"""
@@ -367,6 +473,7 @@ def format_datetime(value: Union[str, datetime]) -> str:
             return value
     return value.strftime("%Y-%m-%d %H:%M:%S")
 
+
 def format_number(value: Union[int, float, str]) -> str:
     """تنسيق الأرقام"""
     try:
@@ -374,13 +481,14 @@ def format_number(value: Union[int, float, str]) -> str:
     except (ValueError, TypeError):
         return str(value)
 
+
 def format_duration(seconds: Union[int, float]) -> str:
     """تنسيق المدة الزمنية"""
     try:
         minutes, seconds = divmod(int(seconds), 60)
         hours, minutes = divmod(minutes, 60)
         days, hours = divmod(hours, 24)
-        
+
         parts = []
         if days > 0:
             parts.append(f"{days} يوم")
@@ -390,10 +498,11 @@ def format_duration(seconds: Union[int, float]) -> str:
             parts.append(f"{minutes} دقيقة")
         if seconds > 0 or not parts:
             parts.append(f"{seconds} ثانية")
-            
+
         return " و ".join(parts)
     except (ValueError, TypeError):
         return str(seconds)
+
 
 # إنشاء نسخة من التطبيق
 app = create_app()

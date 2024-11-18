@@ -42,60 +42,60 @@ class ModelEvaluator:
                            X: ArrayLike,
                            y: ArrayLike,
                            task_type: str,
-                           feature_names: List[str],
-                           sample_weight: Optional[ArrayLike] = None) -> Dict[str, Any]:
+                           feature_names: List[str]) -> Dict[str, Any]:
         """تقييم شامل للنموذج"""
         try:
-            self.task_type = task_type
             evaluation_start = datetime.now()
             
+            # الحصول على المقاييس حسب نوع المهمة
             if task_type == 'classification':
-                metrics = await self._evaluate_classification(model, X, y, sample_weight)
+                metrics = await self._evaluate_classification(model, X, y)
             elif task_type == 'regression':
-                metrics = await self._evaluate_regression(model, X, y, sample_weight)
-            elif task_type == 'clustering':
-                metrics = await self._evaluate_clustering(model, X)
+                metrics = await self._evaluate_regression(model, X, y)
             else:
-                raise ModelEvaluationError(f"نوع المهمة غير مدعوم: {task_type}")
-                
-            # حساب أهمية الميزات وقيم SHAP
+                metrics = await self._evaluate_clustering(model, X)
+
+            # حساب أهمية الميزات
             feature_importance = await self._calculate_feature_importance(model, X, feature_names)
-            shap_analysis = await self._calculate_shap_values(model, X, feature_names)
             
-            # تجميع نتائج التقييم
+            # تجميع النتائج
             evaluation_results = {
-                'metrics': metrics,
+                'metrics': metrics,  # المقاييس الأساسية
                 'feature_importance': feature_importance,
-                'shap_analysis': shap_analysis,
                 'evaluation_time': (datetime.now() - evaluation_start).total_seconds(),
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'additional_info': {
+                    'task_type': task_type,
+                    'n_samples': len(X),
+                    'n_features': len(feature_names)
+                }
             }
-            
-            # حفظ نتائج التقييم
-            await self._save_evaluation_results(evaluation_results)
             
             return evaluation_results
             
         except Exception as e:
             logger.error(f"خطأ في تقييم النموذج: {str(e)}")
-            raise ModelEvaluationError(f"فشل تقييم النموذج: {str(e)}")
+            return {
+                'metrics': {},
+                'feature_importance': {},
+                'error': str(e)
+            }
             
     async def _evaluate_classification(self,
                                     model: ModelType,
                                     X: ArrayLike,
-                                    y: ArrayLike,
-                                    sample_weight: Optional[ArrayLike] = None) -> Dict[str, Any]:
+                                    y: ArrayLike) -> Dict[str, Any]:
         """تقييم نموذج التصنيف مع مقاييس متقدمة"""
         try:
             y_pred = model.predict(X)
             metrics = {
-                'accuracy': accuracy_score(y, y_pred, sample_weight=sample_weight),
-                'precision_macro': precision_score(y, y_pred, average='macro', sample_weight=sample_weight),
-                'recall_macro': recall_score(y, y_pred, average='macro', sample_weight=sample_weight),
-                'f1_macro': f1_score(y, y_pred, average='macro', sample_weight=sample_weight),
-                'precision_weighted': precision_score(y, y_pred, average='weighted', sample_weight=sample_weight),
-                'recall_weighted': recall_score(y, y_pred, average='weighted', sample_weight=sample_weight),
-                'f1_weighted': f1_score(y, y_pred, average='weighted', sample_weight=sample_weight)
+                'accuracy': accuracy_score(y, y_pred),
+                'precision_macro': precision_score(y, y_pred, average='macro'),
+                'recall_macro': recall_score(y, y_pred, average='macro'),
+                'f1_macro': f1_score(y, y_pred, average='macro'),
+                'precision_weighted': precision_score(y, y_pred, average='weighted'),
+                'recall_weighted': recall_score(y, y_pred, average='weighted'),
+                'f1_weighted': f1_score(y, y_pred, average='weighted')
             }
             
             # إضافة مقاييس متقدمة إذا كانت الاحتمالات متوفرة
@@ -105,18 +105,18 @@ class ModelEvaluator:
                 # ROC AUC للتصنيف الثنائي والمتعدد
                 try:
                     if y_prob.shape[1] == 2:  # تصنيف ثنائي
-                        metrics['roc_auc'] = roc_auc_score(y, y_prob[:, 1], sample_weight=sample_weight)
-                        metrics['average_precision'] = average_precision_score(y, y_prob[:, 1], sample_weight=sample_weight)
+                        metrics['roc_auc'] = roc_auc_score(y, y_prob[:, 1])
+                        metrics['average_precision'] = average_precision_score(y, y_prob[:, 1])
                         
                         # منحنيات ROC و PR
-                        fpr, tpr, _ = roc_curve(y, y_prob[:, 1], sample_weight=sample_weight)
-                        precision, recall, _ = precision_recall_curve(y, y_prob[:, 1], sample_weight=sample_weight)
+                        fpr, tpr, _ = roc_curve(y, y_prob[:, 1])
+                        precision, recall, _ = precision_recall_curve(y, y_prob[:, 1])
                         
                         metrics['roc_curve'] = {'fpr': fpr.tolist(), 'tpr': tpr.tolist()}
                         metrics['pr_curve'] = {'precision': precision.tolist(), 'recall': recall.tolist()}
                     else:  # تصنيف متعدد
-                        metrics['roc_auc_ovr'] = roc_auc_score(y, y_prob, multi_class='ovr', sample_weight=sample_weight)
-                        metrics['roc_auc_ovo'] = roc_auc_score(y, y_prob, multi_class='ovo', sample_weight=sample_weight)
+                        metrics['roc_auc_ovr'] = roc_auc_score(y, y_prob, multi_class='ovr')
+                        metrics['roc_auc_ovo'] = roc_auc_score(y, y_prob, multi_class='ovo')
                 except Exception as e:
                     logger.warning(f"فشل حساب مقاييس ROC AUC: {str(e)}")
                 
@@ -128,10 +128,10 @@ class ModelEvaluator:
                     logger.warning(f"فشل حساب منحنى المعايرة: {str(e)}")
             
             # مصفوفة الارتباك وتقرير التصنيف
-            cm = confusion_matrix(y, y_pred, sample_weight=sample_weight)
+            cm = confusion_matrix(y, y_pred)
             metrics['confusion_matrix'] = cm.tolist()
             
-            class_report = classification_report(y, y_pred, output_dict=True, sample_weight=sample_weight)
+            class_report = classification_report(y, y_pred, output_dict=True)
             metrics['classification_report'] = class_report
             
             return metrics
@@ -142,17 +142,16 @@ class ModelEvaluator:
     async def _evaluate_regression(self,
                            model: ModelType,
                            X: ArrayLike,
-                           y: ArrayLike,
-                           sample_weight: Optional[ArrayLike] = None) -> Dict[str, float]:
+                           y: ArrayLike) -> Dict[str, float]:
         """تقييم نموذج الانحدار مع مقاييس متقدمة"""
         try:
             y_pred = model.predict(X)
             metrics = {
-                'mse': mean_squared_error(y, y_pred, sample_weight=sample_weight),
-                'rmse': np.sqrt(mean_squared_error(y, y_pred, sample_weight=sample_weight)),
-                'mae': mean_absolute_error(y, y_pred, sample_weight=sample_weight),
-                'r2': r2_score(y, y_pred, sample_weight=sample_weight),
-                'explained_variance': explained_variance_score(y, y_pred, sample_weight=sample_weight),
+                'mse': mean_squared_error(y, y_pred),
+                'rmse': np.sqrt(mean_squared_error(y, y_pred)),
+                'mae': mean_absolute_error(y, y_pred),
+                'r2': r2_score(y, y_pred),
+                'explained_variance': explained_variance_score(y, y_pred),
                 'max_error': max_error(y, y_pred),
                 'mape': mean_absolute_percentage_error(y, y_pred)
             }
@@ -172,7 +171,7 @@ class ModelEvaluator:
                 mask = (y > lower) & (y <= upper)
                 if np.any(mask):
                     metrics[f'rmse_range_{i+1}'] = float(
-                        np.sqrt(mean_squared_error(y[mask], y_pred[mask], sample_weight=sample_weight[mask] if sample_weight is not None else None))
+                        np.sqrt(mean_squared_error(y[mask], y_pred[mask]))
                     )
             
             return metrics

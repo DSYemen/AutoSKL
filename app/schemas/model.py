@@ -4,7 +4,6 @@ from enum import Enum
 from datetime import datetime
 import numpy as np
 
-
 class ModelStatus(str, Enum):
     """حالات النموذج"""
     ACTIVE = "active"
@@ -13,11 +12,9 @@ class ModelStatus(str, Enum):
     FAILED = "failed"
     DEPRECATED = "deprecated"
 
-
 class BaseModelConfig(BaseModel):
     """النموذج الأساسي مع الإعدادات"""
     model_config = ConfigDict(protected_namespaces=())
-
 
 class PredictionRequest(BaseModelConfig):
     """نموذج طلب التنبؤ"""
@@ -30,14 +27,12 @@ class PredictionRequest(BaseModelConfig):
             raise ValueError("البيانات لا يمكن أن تكون فارغة")
         return v
 
-
 class PredictionResponse(BaseModelConfig):
     """نموذج استجابة التنبؤ"""
     model_id: str
     predictions: List[Any]
     prediction_time: Optional[float] = None
     metadata: Dict[str, Any]
-
 
 class TrainingRequest(BaseModelConfig):
     """نموذج طلب التدريب"""
@@ -47,6 +42,20 @@ class TrainingRequest(BaseModelConfig):
     feature_names: List[str]
     training_params: Optional[Dict[str, Any]] = None
 
+class Metrics(BaseModel):
+    """نموذج المقاييس"""
+    accuracy: Optional[float] = None
+    precision: Optional[float] = None
+    recall: Optional[float] = None
+    f1: Optional[float] = None
+    additional_metrics: Dict[str, float] = Field(default_factory=dict)
+
+class EvaluationResults(BaseModel):
+    """نموذج نتائج التقييم"""
+    metrics: Metrics
+    feature_importance: Dict[str, float] = Field(default_factory=dict)
+    confusion_matrix: Optional[List[List[float]]] = None
+    additional_info: Dict[str, Any] = Field(default_factory=dict)
 
 class TrainingResponse(BaseModelConfig):
     """نموذج استجابة التدريب"""
@@ -55,9 +64,9 @@ class TrainingResponse(BaseModelConfig):
     target_column: str
     feature_names: List[str]
     parameters: Dict[str, Any]
-    evaluation_results: Dict[str, Any]
+    evaluation_results: EvaluationResults
     training_time: float
-
+    metrics: Metrics
 
 class ModelInfo(BaseModelConfig):
     """نموذج معلومات النموذج"""
@@ -71,20 +80,17 @@ class ModelInfo(BaseModelConfig):
     version: Optional[str]
     metadata: Dict[str, Any]
 
-
 class EvaluationRequest(BaseModelConfig):
     """نموذج طلب التقييم"""
     data: Union[List[List[float]], List[Dict[str, Any]]]
     actual_values: List[Any]
     metrics: Optional[List[str]] = None
 
-
 class EvaluationResponse(BaseModelConfig):
     """نموذج استجابة التقييم"""
     model_id: str
     evaluation_results: Dict[str, Any]
     evaluation_time: float
-
 
 class ModelUpdate(BaseModelConfig):
     """نموذج تحديث النموذج"""
@@ -96,7 +102,6 @@ class ModelUpdate(BaseModelConfig):
     success: bool
     error_message: Optional[str] = None
 
-
 class MonitoringMetrics(BaseModelConfig):
     """نموذج مقاييس المراقبة"""
     model_id: str
@@ -105,3 +110,4 @@ class MonitoringMetrics(BaseModelConfig):
     drift_detected: bool
     performance_metrics: Dict[str, float]
     resource_usage: Dict[str, float]
+  
